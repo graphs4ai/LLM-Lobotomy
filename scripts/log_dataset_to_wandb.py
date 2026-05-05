@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 @hydra.main(version_base=None, config_path="../config", config_name="config")
 def main(cfg: DictConfig):
     # Get input path from config
-    input_path = hydra.utils.to_absolute_path(cfg.data.input_csv)
+    input_path = hydra.utils.to_absolute_path(cfg.data.feature_selection_statements)
     
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
@@ -35,7 +35,7 @@ def main(cfg: DictConfig):
         name=wandb_cfg.get('run_name', f"log-{dataset_name}"),
         job_type="dataset_upload",
         config={
-            'input_csv': input_path,
+            'feature_selection_statements': input_path,
             'n_samples': len(df),
             'columns': list(df.columns),
         }

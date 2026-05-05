@@ -512,15 +512,17 @@ def _load_multipliers_from_config(cfg: DictConfig) -> Tuple[Optional[Dict[str, f
           - activation_multipliers dict or None
           - provenance metadata dict with source/artifact_name/variant
     """
-    likert_cfg = cfg.get('likert', {})
-    if likert_cfg is None:
-        likert_cfg = {}
+    ipi_eval_cfg = cfg.get('likert', {})
+    if ipi_eval_cfg is None:
+        ipi_eval_cfg = {}
 
-    evaluation_variant = str(cfg.get('evaluation_variant', '') or '').strip().lower()
+    evaluation_variant = str(
+        cfg.get('evaluation_variant', '') or '').strip().lower()
     if evaluation_variant not in {"baseline", "maximize", "minimize"}:
         evaluation_variant = "baseline"
 
-    multiplier_artifact_name = likert_cfg.get('multiplier_artifact_name', None)
+    multiplier_artifact_name = ipi_eval_cfg.get(
+        'multiplier_artifact_name', None)
 
     provenance = {
         "source": "none",
@@ -559,7 +561,7 @@ def _load_multipliers_from_config(cfg: DictConfig) -> Tuple[Optional[Dict[str, f
         return activation_multipliers, provenance
 
     # --- Option 2: Load from likert.activation_multipliers ---
-    likert_multipliers = likert_cfg.get('activation_multipliers', None)
+    likert_multipliers = ipi_eval_cfg.get('activation_multipliers', None)
     if likert_multipliers is not None:
         activation_multipliers = {str(k): float(v)
                                   for k, v in dict(likert_multipliers).items()}
@@ -625,7 +627,8 @@ def main(cfg: DictConfig):
     }
     dtype = dtype_map.get(dtype_str, torch.float16)
 
-    evaluation_variant = str(cfg.get('evaluation_variant', '') or '').strip().lower()
+    evaluation_variant = str(
+        cfg.get('evaluation_variant', '') or '').strip().lower()
     if not evaluation_variant:
         evaluation_variant = "baseline"
     if evaluation_variant not in {"baseline", "maximize", "minimize"}:
@@ -634,8 +637,9 @@ def main(cfg: DictConfig):
         )
 
     # Prepare wandb config metadata
-    likert_cfg = cfg.get('likert', {}) or {}
-    multiplier_artifact_name = likert_cfg.get('multiplier_artifact_name', None)
+    ipi_eval_cfg = cfg.get('likert', {}) or {}
+    multiplier_artifact_name = ipi_eval_cfg.get(
+        'multiplier_artifact_name', None)
 
     wandb_config = OmegaConf.to_container(cfg, resolve=True)
     wandb_config.update({
@@ -727,7 +731,8 @@ def main(cfg: DictConfig):
     eval_type = 'intervened' if activation_multipliers else 'baseline'
     run_dir = Path(poeta_output_dir) / date_str / f"poeta_{time_str}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    output_path = str(run_dir / f"{evaluation_variant}_{eval_type}_results.json")
+    output_path = str(
+        run_dir / f"{evaluation_variant}_{eval_type}_results.json")
     log_file = run_dir / "evaluation.log"
 
     def run_single_eval():

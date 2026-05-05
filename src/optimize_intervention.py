@@ -670,7 +670,7 @@ def main(cfg: DictConfig):
     with OutputLogger(log_path):
         # Extract configuration
         opt_cfg = cfg.optimization
-        likert_cfg = cfg.likert
+        ipi_eval_cfg = cfg.likert
 
         # W&B configuration
         wandb_cfg = cfg.get('wandb', {})
@@ -736,7 +736,7 @@ def main(cfg: DictConfig):
             f"Invalid direction '{direction}'. Must be 'maximize' or 'minimize'."
 
         # Language setting
-        language = likert_cfg.get('language', 'pt')
+        language = ipi_eval_cfg.get('language', 'pt')
 
         print("=" * 70)
         print("NEURON INTERVENTION OPTIMIZATION (SOFT METRIC)")
@@ -760,7 +760,8 @@ def main(cfg: DictConfig):
         print(f"Load if exists: {load_if_exists}")
 
         # Load questions
-        questions_path = hydra.utils.to_absolute_path(likert_cfg.questions_csv)
+        questions_path = hydra.utils.to_absolute_path(
+            ipi_eval_cfg.questions_csv)
         print(f"\nLoading questions from {questions_path}...")
         questions_df = pd.read_csv(questions_path)
 
@@ -804,8 +805,8 @@ def main(cfg: DictConfig):
             wrapper=wrapper,
             questions_df=questions_df,
             language=language,
-            max_new_tokens=likert_cfg.get('max_new_tokens', 10),
-            temperature=likert_cfg.get('temperature', 0.0)
+            max_new_tokens=ipi_eval_cfg.get('max_new_tokens', 10),
+            temperature=ipi_eval_cfg.get('temperature', 0.0)
         )
 
         # Compute baseline soft score (returns both signed and absolute)

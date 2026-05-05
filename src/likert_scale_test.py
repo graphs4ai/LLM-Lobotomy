@@ -619,18 +619,19 @@ def main(cfg: DictConfig):
     """
     # W&B configuration
     wandb_cfg = cfg.get('wandb', {})
-    likert_cfg = cfg.get("likert", {})
+    ipi_eval_cfg = cfg.get("ipi_eval", {})
 
     # Get multiplier artifact name if provided
-    multiplier_artifact_name = likert_cfg.get('multiplier_artifact_name', None)
+    multiplier_artifact_name = ipi_eval_cfg.get(
+        'multiplier_artifact_name', None)
 
     # Initialize W&B
     wandb_config = OmegaConf.to_container(cfg, resolve=True)
     wandb_config.update(
         {
-            'questions_csv': likert_cfg.get('questions_csv'),
-            'language': likert_cfg.get('language', 'pt'),
-            'temperature': likert_cfg.get('temperature', 0.0),
+            'questions_csv': ipi_eval_cfg.get('questions_csv'),
+            'language': ipi_eval_cfg.get('language', 'pt'),
+            'temperature': ipi_eval_cfg.get('temperature', 0.0),
             'multiplier_artifact_name': multiplier_artifact_name,
         }
     )
@@ -644,7 +645,7 @@ def main(cfg: DictConfig):
 
     # Load questions
     questions_path = hydra.utils.to_absolute_path(
-        likert_cfg.get("questions_csv", "ipi_questions.csv")
+        ipi_eval_cfg.get("questions_csv", "ipi_questions.csv")
     )
 
     print(f"Loading questions from {questions_path}...")
@@ -706,7 +707,7 @@ def main(cfg: DictConfig):
             f"Artifact best trial value: {best_trial.get('soft_score', 'N/A')}")
     else:
         # Parse from config
-        activation_multipliers_cfg = likert_cfg.get(
+        activation_multipliers_cfg = ipi_eval_cfg.get(
             "activation_multipliers", None)
         if activation_multipliers_cfg is not None:
             # Convert OmegaConf to dict
@@ -720,7 +721,7 @@ def main(cfg: DictConfig):
     # Get output directory
     hydra_cfg = HydraConfig.get()
     output_dir = Path(hydra_cfg.runtime.output_dir)
-    experiment_name = likert_cfg.get("experiment_name", None)
+    experiment_name = ipi_eval_cfg.get("experiment_name", None)
 
     # If intervention is configured, run both baseline and intervention for comparison
     if activation_multipliers:
@@ -733,9 +734,9 @@ def main(cfg: DictConfig):
         baseline_results_df = run_likert_test(
             wrapper=wrapper,
             questions_df=questions_df,
-            language=cfg.get("likert", {}).get("language", "pt"),
-            max_new_tokens=cfg.get("likert", {}).get("max_new_tokens", 10),
-            temperature=cfg.get("likert", {}).get("temperature", 0.0),
+            language=cfg.get("ipi_eval", {}).get("language", "pt"),
+            max_new_tokens=cfg.get("ipi_eval", {}).get("max_new_tokens", 10),
+            temperature=cfg.get("ipi_eval", {}).get("temperature", 0.0),
             activation_multipliers=None,  # No intervention
             verbose=True
         )
@@ -754,9 +755,9 @@ def main(cfg: DictConfig):
         intervention_results_df = run_likert_test(
             wrapper=wrapper,
             questions_df=questions_df,
-            language=cfg.get("likert", {}).get("language", "pt"),
-            max_new_tokens=cfg.get("likert", {}).get("max_new_tokens", 10),
-            temperature=cfg.get("likert", {}).get("temperature", 0.0),
+            language=cfg.get("ipi_eval", {}).get("language", "pt"),
+            max_new_tokens=cfg.get("ipi_eval", {}).get("max_new_tokens", 10),
+            temperature=cfg.get("ipi_eval", {}).get("temperature", 0.0),
             activation_multipliers=activation_multipliers,
             verbose=True
         )
@@ -878,9 +879,9 @@ def main(cfg: DictConfig):
         results_df = run_likert_test(
             wrapper=wrapper,
             questions_df=questions_df,
-            language=cfg.get("likert", {}).get("language", "pt"),
-            max_new_tokens=cfg.get("likert", {}).get("max_new_tokens", 10),
-            temperature=cfg.get("likert", {}).get("temperature", 0.0),
+            language=cfg.get("ipi_eval", {}).get("language", "pt"),
+            max_new_tokens=cfg.get("ipi_eval", {}).get("max_new_tokens", 10),
+            temperature=cfg.get("ipi_eval", {}).get("temperature", 0.0),
             activation_multipliers=None,
             verbose=True
         )
@@ -892,8 +893,8 @@ def main(cfg: DictConfig):
 
         # Experiment config
         experiment_config = {
-            "language": cfg.get("likert", {}).get("language", "pt"),
-            "temperature": cfg.get("likert", {}).get("temperature", 0.0),
+            "language": cfg.get("ipi_eval", {}).get("language", "pt"),
+            "temperature": cfg.get("ipi_eval", {}).get("temperature", 0.0),
             "activation_multipliers": None,
             "questions_file": questions_path,
             "n_pairs": n_pairs
