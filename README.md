@@ -91,7 +91,7 @@ The project uses **W&B Artifacts** for full reproducibility and lineage tracking
 │   ├── poeta_eval.yaml              # PoETa benchmark config (deprecated)
 │   └── poeta_eval_compare.yaml      # PoETa comparison config (deprecated)
 ├── likert/
-│   └── questions_anderson.csv       # Likert questionnaire (paired P+/P-)
+│   └── ipi_questions.csv       # Likert questionnaire (paired P+/P-)
 ├── data/                             # Activation datasets (parquet)
 ├── artifacts/                        # Downloaded W&B artifacts cache
 ├── runs/                             # Experiment outputs (Hydra run dirs)

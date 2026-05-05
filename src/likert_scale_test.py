@@ -644,7 +644,7 @@ def main(cfg: DictConfig):
 
     # Load questions
     questions_path = hydra.utils.to_absolute_path(
-        likert_cfg.get("questions_csv", "questions_anderson.csv")
+        likert_cfg.get("questions_csv", "ipi_questions.csv")
     )
 
     print(f"Loading questions from {questions_path}...")
