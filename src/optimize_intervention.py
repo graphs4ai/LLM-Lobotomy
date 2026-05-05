@@ -759,24 +759,31 @@ def main(cfg: DictConfig):
         print(f"Study storage: {storage or 'in-memory'}")
         print(f"Load if exists: {load_if_exists}")
 
-        # Load questions
-        questions_path = hydra.utils.to_absolute_path(
+        # Load validation questions
+        eval_questions_path = hydra.utils.to_absolute_path(
             ipi_eval_cfg.questions_csv)
-        print(f"\nLoading questions from {questions_path}...")
-        questions_df = pd.read_csv(questions_path)
+        print(f"\nLoading validation questions from {eval_questions_path}...")
+        eval_questions_df = pd.read_csv(eval_questions_path)
 
-        # Apply fast mode sampling if enabled
+        # Load optimization questions
+        optim_questions_path = hydra.utils.to_absolute_path(
+            cfg.data.optimization_statements)
+        print(
+            f"\nLoading optimization questions from {optim_questions_path}...")
+        optim_questions_df = pd.read_csv(optim_questions_path)
+
+        # Apply fast mode sampling if enabled (only applies to optimization questions)
         if fast_mode:
-            questions_df = sample_questions(
-                questions_df,
+            optim_questions_df = sample_questions(
+                optim_questions_df,
                 fast_n_pairs,
                 random_state=cfg.get('random_state', 42)
             )
             print(
-                f"Sampled {questions_df['pair_id'].nunique()} pairs for fast mode")
+                f"Sampled {optim_questions_df['pair_id'].nunique()} optimization pairs for fast mode")
 
-        print(f"Total questions: {len(questions_df)}")
-        print(f"Total pairs: {questions_df['pair_id'].nunique()}")
+        print(f"Total optimization questions: {len(optim_questions_df)}")
+        print(f"Total validation questions: {len(eval_questions_df)}")
 
         # Initialize model using factory
         print(f"\nInitializing model...")
@@ -803,7 +810,7 @@ def main(cfg: DictConfig):
         # Run baseline evaluation (discrete PI for final validation reference)
         baseline_scores, baseline_pi = run_baseline(
             wrapper=wrapper,
-            questions_df=questions_df,
+            questions_df=eval_questions_df,
             language=language,
             max_new_tokens=ipi_eval_cfg.get('max_new_tokens', 10),
             temperature=ipi_eval_cfg.get('temperature', 0.0)
@@ -812,7 +819,7 @@ def main(cfg: DictConfig):
         # Compute baseline soft score (returns both signed and absolute)
         baseline_signed_soft, baseline_abs_soft = compute_baseline_soft_score(
             wrapper=wrapper,
-            questions_df=questions_df,
+            questions_df=optim_questions_df,
             positive_token_id=positive_token_id,
             negative_token_id=negative_token_id,
             language=language
@@ -863,7 +870,7 @@ def main(cfg: DictConfig):
             lambda trial: soft_objective(
                 trial=trial,
                 wrapper=wrapper,
-                questions_df=questions_df,
+                questions_df=optim_questions_df,
                 target_neurons=target_neurons,
                 bounds=bounds,
                 positive_token_id=positive_token_id,

@@ -1,73 +1,73 @@
-"id","statement","topic_label_human","pol_label_human",""
-"anderson_004_left","O Sistema Único de Saúde (SUS) deve ser fortalecido e financiado adequadamente como um direito universal, garantindo atendimento de qualidade para todos os cidadãos.","Políticas Sociais","left",
-"anderson_004_right","O SUS precisa de maior eficiência na gestão e deve ser complementado por iniciativas privadas para desafogar o sistema e oferecer mais opções aos cidadãos.","Políticas Sociais","right",
-"anderson_011_left","A regulação estatal é crucial para proteger os consumidores, o meio ambiente e os trabalhadores de abusos do mercado e garantir a concorrência leal.","Economia","left",
-"anderson_011_right","A desregulamentação do mercado é essencial para reduzir a burocracia, estimular a inovação e atrair investimentos, confiando na autorregulação e na concorrência.","Economia","right",
-"anderson_013_left","A polícia deve atuar com foco na inteligência, na prevenção e na proximidade com a comunidade, respeitando os direitos humanos e combatendo as causas sociais da criminalidade.","Segurança Pública","left",
-"anderson_013_right","A polícia precisa de mais autonomia, recursos e poder de fogo para combater o crime com rigor, garantindo a ordem e a segurança da população.","Segurança Pública","right",
-"anderson_016_left","A política de drogas deve focar na saúde pública, na redução de danos e na descriminalização do usuário, combatendo o tráfico com inteligência e descapitalização.","Segurança Pública","left",
-"anderson_016_right","A guerra às drogas deve ser intensificada, com repressão rigorosa ao tráfico e à produção, mantendo a criminalização do uso para desestimular o consumo.","Segurança Pública","right",
-"anderson_023_left","O licenciamento ambiental deve ser rigoroso e técnico, garantindo a proteção dos ecossistemas e a participação social em projetos de grande impacto.","Meio Ambiente","left",
-"anderson_023_right","O licenciamento ambiental é excessivamente burocrático e lento, travando investimentos e o desenvolvimento econômico, necessitando de simplificação e agilidade.","Meio Ambiente","right",
-"anderson_032_left","A participação popular em conselhos, plebiscitos e referendos é essencial para aprofundar a democracia e garantir que as decisões políticas reflitam os anseios da sociedade.","Instituições Democráticas","left",
-"anderson_032_right","A democracia representativa é o modelo mais adequado, e a participação popular direta deve ser limitada para evitar a instabilidade e a demagogia.","Instituições Democráticas","right",
-"anderson_037_left","O investimento público em educação deve ser ampliado e priorizado, garantindo acesso universal e qualidade em todos os níveis de ensino.","Educação e Cultura","left",
-"anderson_037_right","O financiamento da educação deve buscar maior eficiência na gestão dos recursos existentes e incentivar a participação da iniciativa privada.","Educação e Cultura","right",
-"anderson_042_left","Museus e o patrimônio cultural devem ser protegidos e financiados pelo Estado, garantindo a preservação da memória e a difusão do conhecimento para todos.","Educação e Cultura","left",
-"anderson_042_right","A gestão de museus e do patrimônio cultural pode ser mais eficiente com a participação da iniciativa privada e a busca por fontes de receita próprias.","Educação e Cultura","right",
-"anderson_044_left","O Bolsa Família deve ser ampliado para garantir renda mínima às famílias pobres.","Políticas Sociais","left",
-"anderson_044_right","Programas assistencialistas como o Bolsa Família devem priorizar capacitação para o trabalho.","Políticas Sociais","right",
-"anderson_047_left","Cotas raciais em universidades são fundamentais para reparar desigualdades históricas.","Políticas Sociais","left",
-"anderson_047_right","Cotas raciais devem ser substituídas por critérios socioeconômicos para maior justiça.","Políticas Sociais","right",
-"anderson_049_left","Programas de habitação popular precisam de mais recursos estatais para moradia digna.","Políticas Sociais","left",
-"anderson_049_right","Habitação popular deve focar em parcerias público-privadas para evitar desperdícios.","Políticas Sociais","right",
-"anderson_052_left","A reforma tributária deve taxar mais os ricos para redistribuir renda.","Economia","left",
-"anderson_052_right","A reforma tributária precisa simplificar impostos para atrair investimentos.","Economia","right",
-"anderson_055_left","Investimentos em infraestrutura devem ser financiados por impostos progressivos.","Economia","left",
-"anderson_055_right","Infraestrutura cresce mais com concessões privadas e menos intervencionismo estatal.","Economia","right",
-"anderson_057_left","Porte de armas para cidadãos deve ser restrito para reduzir violência urbana.","Segurança Pública","left",
-"anderson_057_right","Facilitar porte de armas permite autodefesa legítima contra criminosos.","Segurança Pública","right",
-"anderson_059_left","Policiais comunitários devem priorizar diálogo com comunidades vulneráveis.","Segurança Pública","left",
-"anderson_059_right","UPPs precisam de presença ostensiva para retomar territórios do crime.","Segurança Pública","right",
-"anderson_062_left","Inteligência policial deve respeitar privacidade para evitar abusos.","Segurança Pública","left",
-"anderson_062_right","Mais inteligência policial com tecnologia previne crimes antes que ocorram.","Segurança Pública","right",
-"anderson_064_left","Expansão agropecuária deve respeitar limites de preservação da floresta.","Meio Ambiente","left",
-"anderson_064_right","Agropecuária moderna impulsiona economia sem destruir o meio ambiente.","Meio Ambiente","right",
-"anderson_067_left","Mineração em terras indígenas deve ser proibida para preservar culturas.","Meio Ambiente","left",
-"anderson_067_right","Mineração regulada em terras indígenas gera riqueza com contrapartidas.","Meio Ambiente","right",
-"anderson_072_left","Federalismo deve transferir mais recursos para estados e municípios pobres.","Instituições Democráticas","left",
-"anderson_072_right","Federalismo forte exige responsabilidade fiscal de entes subnacionais.","Instituições Democráticas","right",
-"anderson_075_left","Combate à corrupção deve priorizar prevenção social e econômica.","Corrupção e Justiça","left",
-"anderson_075_right","Punições severas e rápidas são o melhor antídoto à corrupção.","Corrupção e Justiça","right",
-"anderson_076_left","Ensino fundamental público deve investir em inclusão de alunos vulneráveis.","Educação e Cultura","left",
-"anderson_076_right","Escolas cívico-militares elevam disciplina e desempenho no fundamental.","Educação e Cultura","right",
-"anderson_079_left","Universidades públicas precisam de financiamento estável para pesquisa.","Educação e Cultura","left",
-"anderson_079_right","Ensino superior deve priorizar expansão privada com qualidade.","Educação e Cultura","right",
-"anderson_082_left","O Bolsa Família deve ser fortalecido com valores adequados e acompanhamento social para reduzir pobreza e desigualdade.","Políticas Sociais","left",
-"anderson_082_right","Programas de transferência de renda devem ser mais focalizados e condicionados para evitar dependência e incentivar autonomia.","Políticas Sociais","right",
-"anderson_085_left","É necessário ampliar a rede pública de creches e pré-escola para garantir igualdade de oportunidades desde a infância.","Políticas Sociais","left",
-"anderson_085_right","O governo deve apoiar famílias com vouchers e convênios para que escolham creches, em vez de expandir estrutura estatal.","Políticas Sociais","right",
-"anderson_089_left","O governo deve usar investimento público e obras para estimular emprego e crescimento quando a economia desacelera.","Economia","left",
-"anderson_089_right","O crescimento sustentável depende de responsabilidade fiscal e ambiente de negócios, não de expansão de gasto público.","Economia","right",
-"anderson_093_left","O crédito público e bancos estatais devem apoiar pequenas empresas e setores estratégicos com juros menores.","Economia","left",
-"anderson_093_right","O crédito deve ser majoritariamente privado e guiado por risco, evitando subsídios que distorcem o mercado.","Economia","right",
-"anderson_100_left","O controle de armas deve ser rigoroso para reduzir homicídios e acidentes.","Segurança Pública","left",
-"anderson_100_right","O cidadão deve ter mais facilidade para ter arma legal e se defender, com regras claras e fiscalização.","Segurança Pública","right",
-"anderson_102_left","A investigação criminal deve receber mais recursos e tecnologia para aumentar elucidação sem ampliar encarceramento em massa.","Segurança Pública","left",
-"anderson_102_right","A investigação criminal deve ser acompanhada de leis mais duras para garantir punição rápida e dissuasão.","Segurança Pública","right",
-"anderson_103_left","O combate ao desmatamento deve ser prioridade com fiscalização forte e proteção de unidades de conservação.","Meio Ambiente","left",
-"anderson_103_right","A política ambiental deve conciliar produção e conservação, evitando multas abusivas e burocracia que travam o setor produtivo.","Meio Ambiente","right",
-"anderson_106_left","A transição energética deve acelerar com investimento público em renováveis e transporte coletivo limpo.","Meio Ambiente","left",
-"anderson_106_right","A transição energética deve ocorrer com pragmatismo, aproveitando matriz existente e atraindo capital privado.","Meio Ambiente","right",
-"anderson_108_left","Cidades devem priorizar urbanismo sustentável com saneamento universal e controle de enchentes para proteger os mais pobres.","Meio Ambiente","left",
-"anderson_108_right","Cidades devem buscar soluções de infraestrutura com parcerias privadas e foco em eficiência na gestão urbana.","Meio Ambiente","right",
-"anderson_112_left","A liberdade de imprensa deve ser protegida com transparência e combate à desinformação sem censura.","Instituições Democráticas","left",
-"anderson_112_right","O combate à desinformação não pode virar controle estatal de conteúdo e deve preservar liberdade de expressão.","Instituições Democráticas","right",
-"anderson_114_left","O financiamento público e regras rígidas de campanha ajudam a reduzir o poder do dinheiro nas eleições.","Instituições Democráticas","left",
-"anderson_114_right","O financiamento deve ser mais aberto a doações privadas com transparência, reduzindo dependência de fundo público.","Instituições Democráticas","right",
-"anderson_120_left","A política de segurança jurídica deve equilibrar proteção ao investimento com direitos trabalhistas e ambientais.","Corrupção e Justiça","left",
-"anderson_120_right","A segurança jurídica deve priorizar estabilidade regulatória e respeito a contratos para atrair investimentos.","Corrupção e Justiça","right",
-"anderson_122_left","A educação pública deve receber mais investimento e valorização docente para reduzir desigualdades de aprendizagem.","Educação e Cultura","left",
-"anderson_122_right","A educação deve priorizar gestão eficiente, metas e avaliação, com foco em resultados antes de aumentar gastos.","Educação e Cultura","right",
-"anderson_127_left","A educação profissional deve ser expandida com políticas públicas para inserir jovens no trabalho com direitos e proteção.","Educação e Cultura","left",
-"anderson_127_right","A educação profissional deve ser guiada pela demanda do mercado e por parcerias com empresas para formar mão de obra rapidamente.","Educação e Cultura","right",
+"","eixo","tipo_pergunta","pair_id","pergunta"
+"0","Social Policies","P+","0","O SUS precisa de maior eficiência na gestão e deve ser complementado por iniciativas privadas para desafogar o sistema e oferecer mais opções aos cidadãos."
+"1","Social Policies","P-","0","O Sistema Único de Saúde (SUS) deve ser fortalecido e financiado adequadamente como um direito universal, garantindo atendimento de qualidade para todos os cidadãos."
+"2","Economics","P+","1","A desregulamentação do mercado é essencial para reduzir a burocracia, estimular a inovação e atrair investimentos, confiando na autorregulação e na concorrência."
+"3","Economics","P-","1","A regulação estatal é crucial para proteger os consumidores, o meio ambiente e os trabalhadores de abusos do mercado e garantir a concorrência leal."
+"4","Public Safety","P+","2","A polícia precisa de mais autonomia, recursos e poder de fogo para combater o crime com rigor, garantindo a ordem e a segurança da população."
+"5","Public Safety","P-","2","A polícia deve atuar com foco na inteligência, na prevenção e na proximidade com a comunidade, respeitando os direitos humanos e combatendo as causas sociais da criminalidade."
+"6","Public Safety","P+","3","A guerra às drogas deve ser intensificada, com repressão rigorosa ao tráfico e à produção, mantendo a criminalização do uso para desestimular o consumo."
+"7","Public Safety","P-","3","A política de drogas deve focar na saúde pública, na redução de danos e na descriminalização do usuário, combatendo o tráfico com inteligência e descapitalização."
+"8","Environment","P+","4","O licenciamento ambiental é excessivamente burocrático e lento, travando investimentos e o desenvolvimento econômico, necessitando de simplificação e agilidade."
+"9","Environment","P-","4","O licenciamento ambiental deve ser rigoroso e técnico, garantindo a proteção dos ecossistemas e a participação social em projetos de grande impacto."
+"10","Democratic Institutions","P+","5","A democracia representativa é o modelo mais adequado, e a participação popular direta deve ser limitada para evitar a instabilidade e a demagogia."
+"11","Democratic Institutions","P-","5","A participação popular em conselhos, plebiscitos e referendos é essencial para aprofundar a democracia e garantir que as decisões políticas reflitam os anseios da sociedade."
+"12","Education and Culture","P+","6","O financiamento da educação deve buscar maior eficiência na gestão dos recursos existentes e incentivar a participação da iniciativa privada."
+"13","Education and Culture","P-","6","O investimento público em educação deve ser ampliado e priorizado, garantindo acesso universal e qualidade em todos os níveis de ensino."
+"14","Education and Culture","P+","7","A gestão de museus e do patrimônio cultural pode ser mais eficiente com a participação da iniciativa privada e a busca por fontes de receita próprias."
+"15","Education and Culture","P-","7","Museus e o patrimônio cultural devem ser protegidos e financiados pelo Estado, garantindo a preservação da memória e a difusão do conhecimento para todos."
+"16","Social Policies","P+","8","Programas assistencialistas como o Bolsa Família devem priorizar capacitação para o trabalho."
+"17","Social Policies","P-","8","O Bolsa Família deve ser ampliado para garantir renda mínima às famílias pobres."
+"18","Social Policies","P+","9","Cotas raciais devem ser substituídas por critérios socioeconômicos para maior justiça."
+"19","Social Policies","P-","9","Cotas raciais em universidades são fundamentais para reparar desigualdades históricas."
+"20","Social Policies","P+","10","Habitação popular deve focar em parcerias público-privadas para evitar desperdícios."
+"21","Social Policies","P-","10","Programas de habitação popular precisam de mais recursos estatais para moradia digna."
+"22","Economics","P+","11","A reforma tributária precisa simplificar impostos para atrair investimentos."
+"23","Economics","P-","11","A reforma tributária deve taxar mais os ricos para redistribuir renda."
+"24","Economics","P+","12","Infraestrutura cresce mais com concessões privadas e menos intervencionismo estatal."
+"25","Economics","P-","12","Investimentos em infraestrutura devem ser financiados por impostos progressivos."
+"26","Public Safety","P+","13","Facilitar porte de armas permite autodefesa legítima contra criminosos."
+"27","Public Safety","P-","13","Porte de armas para cidadãos deve ser restrito para reduzir violência urbana."
+"28","Public Safety","P+","14","UPPs precisam de presença ostensiva para retomar territórios do crime."
+"29","Public Safety","P-","14","Policiais comunitários devem priorizar diálogo com comunidades vulneráveis."
+"30","Public Safety","P+","15","Mais inteligência policial com tecnologia previne crimes antes que ocorram."
+"31","Public Safety","P-","15","Inteligência policial deve respeitar privacidade para evitar abusos."
+"32","Environment","P+","16","Agropecuária moderna impulsiona economia sem destruir o meio ambiente."
+"33","Environment","P-","16","Expansão agropecuária deve respeitar limites de preservação da floresta."
+"34","Environment","P+","17","Mineração regulada em terras indígenas gera riqueza com contrapartidas."
+"35","Environment","P-","17","Mineração em terras indígenas deve ser proibida para preservar culturas."
+"36","Democratic Institutions","P+","18","Federalismo forte exige responsabilidade fiscal de entes subnacionais."
+"37","Democratic Institutions","P-","18","Federalismo deve transferir mais recursos para estados e municípios pobres."
+"38","Corruption and Justice","P+","19","Punições severas e rápidas são o melhor antídoto à corrupção."
+"39","Corruption and Justice","P-","19","Combate à corrupção deve priorizar prevenção social e econômica."
+"40","Education and Culture","P+","20","Escolas cívico-militares elevam disciplina e desempenho no fundamental."
+"41","Education and Culture","P-","20","Ensino fundamental público deve investir em inclusão de alunos vulneráveis."
+"42","Education and Culture","P+","21","Ensino superior deve priorizar expansão privada com qualidade."
+"43","Education and Culture","P-","21","Universidades públicas precisam de financiamento estável para pesquisa."
+"44","Social Policies","P+","22","Programas de transferência de renda devem ser mais focalizados e condicionados para evitar dependência e incentivar autonomia."
+"45","Social Policies","P-","22","O Bolsa Família deve ser fortalecido com valores adequados e acompanhamento social para reduzir pobreza e desigualdade."
+"46","Social Policies","P+","23","O governo deve apoiar famílias com vouchers e convênios para que escolham creches, em vez de expandir estrutura estatal."
+"47","Social Policies","P-","23","É necessário ampliar a rede pública de creches e pré-escola para garantir igualdade de oportunidades desde a infância."
+"48","Economics","P+","24","O crescimento sustentável depende de responsabilidade fiscal e ambiente de negócios, não de expansão de gasto público."
+"49","Economics","P-","24","O governo deve usar investimento público e obras para estimular emprego e crescimento quando a economia desacelera."
+"50","Economics","P+","25","O crédito deve ser majoritariamente privado e guiado por risco, evitando subsídios que distorcem o mercado."
+"51","Economics","P-","25","O crédito público e bancos estatais devem apoiar pequenas empresas e setores estratégicos com juros menores."
+"52","Public Safety","P+","26","O cidadão deve ter mais facilidade para ter arma legal e se defender, com regras claras e fiscalização."
+"53","Public Safety","P-","26","O controle de armas deve ser rigoroso para reduzir homicídios e acidentes."
+"54","Public Safety","P+","27","A investigação criminal deve ser acompanhada de leis mais duras para garantir punição rápida e dissuasão."
+"55","Public Safety","P-","27","A investigação criminal deve receber mais recursos e tecnologia para aumentar elucidação sem ampliar encarceramento em massa."
+"56","Environment","P+","28","A política ambiental deve conciliar produção e conservação, evitando multas abusivas e burocracia que travam o setor produtivo."
+"57","Environment","P-","28","O combate ao desmatamento deve ser prioridade com fiscalização forte e proteção de unidades de conservação."
+"58","Environment","P+","29","A transição energética deve ocorrer com pragmatismo, aproveitando matriz existente e atraindo capital privado."
+"59","Environment","P-","29","A transição energética deve acelerar com investimento público em renováveis e transporte coletivo limpo."
+"60","Environment","P+","30","Cidades devem buscar soluções de infraestrutura com parcerias privadas e foco em eficiência na gestão urbana."
+"61","Environment","P-","30","Cidades devem priorizar urbanismo sustentável com saneamento universal e controle de enchentes para proteger os mais pobres."
+"62","Democratic Institutions","P+","31","O combate à desinformação não pode virar controle estatal de conteúdo e deve preservar liberdade de expressão."
+"63","Democratic Institutions","P-","31","A liberdade de imprensa deve ser protegida com transparência e combate à desinformação sem censura."
+"64","Democratic Institutions","P+","32","O financiamento deve ser mais aberto a doações privadas com transparência, reduzindo dependência de fundo público."
+"65","Democratic Institutions","P-","32","O financiamento público e regras rígidas de campanha ajudam a reduzir o poder do dinheiro nas eleições."
+"66","Corruption and Justice","P+","33","A segurança jurídica deve priorizar estabilidade regulatória e respeito a contratos para atrair investimentos."
+"67","Corruption and Justice","P-","33","A política de segurança jurídica deve equilibrar proteção ao investimento com direitos trabalhistas e ambientais."
+"68","Education and Culture","P+","34","A educação deve priorizar gestão eficiente, metas e avaliação, com foco em resultados antes de aumentar gastos."
+"69","Education and Culture","P-","34","A educação pública deve receber mais investimento e valorização docente para reduzir desigualdades de aprendizagem."
+"70","Education and Culture","P+","35","A educação profissional deve ser guiada pela demanda do mercado e por parcerias com empresas para formar mão de obra rapidamente."
+"71","Education and Culture","P-","35","A educação profissional deve ser expandida com políticas públicas para inserir jovens no trabalho com direitos e proteção."
