@@ -654,7 +654,7 @@ def compute_baseline_soft_score(
     return signed_soft, abs_soft
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="optimize_intervention")
+@hydra.main(version_base=None, config_path="../config", config_name="config")
 def main(cfg: DictConfig):
     """
     Main function to run optimization (TPE/CMA-ES) for neuron interventions.
@@ -670,7 +670,7 @@ def main(cfg: DictConfig):
     with OutputLogger(log_path):
         # Extract configuration
         opt_cfg = cfg.optimization
-        ipi_eval_cfg = cfg.likert
+        ipi_eval_cfg = cfg.ipi_eval
 
         # W&B configuration
         wandb_cfg = cfg.get('wandb', {})
