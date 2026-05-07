@@ -118,7 +118,7 @@ Each model has a **unified config** (`llama-3.1-8b.yaml`, `gemma-3-4b.yaml`, `ge
 ```bash
 # 1. Extract activations from your dataset
 python src/extract_activations.py --config-name llama-3.1-8b \
-  data.input_csv="/path/to/political_texts.csv" \
+  data.feature_selection_statements="/path/to/political_texts.csv" \
   extraction.layers="all"
 
 # 2. Train SVM and identify politically-relevant neurons
@@ -159,7 +159,7 @@ python src/optimize_intervention.py --config-name llama-3.1-8b \
 
 # Change dataset
 python src/extract_activations.py --config-name llama-3.1-8b \
-  data.input_csv="/path/to/different_data.csv"
+  data.feature_selection_statements="/path/to/different_data.csv"
 ```
 
 ### Config Files
