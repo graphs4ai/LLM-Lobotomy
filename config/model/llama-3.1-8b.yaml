@@ -1,0 +1,144 @@
+# @package _global_
+model:
+  name: "meta-llama/Llama-3.1-8B-Instruct"
+  wrapper: "llama"
+  n_devices: 1  # Number of GPUs (increase if model doesn't fit on one GPU)
+  dtype: "float16"  # "float16" or "bfloat16"
+
+data:
+  activations_artifact_name: "ebouhid-unicamp/activation-stance-classifier/activations-split_FS-Llama-3.1-8B-Instruct-all:v0"
+
+extraction:
+  batch_size: 8
+  layers: "all"  # "all" or list like [14, 15, 16]
+  device: "cuda"
+  max_length: 1024
+
+ipi_eval:
+  use_chat_format: True
+  multiplier_artifact_name: "ebouhid-unicamp/activation-stance-classifier/Llama-3.1-8B-Instruct_signed_minimize_multipliers:latest"
+
+optimization:
+  # Target neurons - use feature_artifact_name to load dynamically from SVM artifact
+  # Or specify manually below
+  feature_artifact_name: "ebouhid-unicamp/activation-stance-classifier/svm-feature-ranking-activations-split_FS-Llama-3.1-8B-Instruct-all:v0"
+  target_neuron_count: 80  # Number of neurons to select from artifact
+  
+  target_neurons: null
+  #   # --- Group A: Proven Winners (|m| > 0.8) ---
+  #   - "layer_15-neuron_1215"
+  #   - "layer_18-neuron_3629"
+  #   - "layer_16-neuron_2807"
+  #   - "layer_12-neuron_3994"
+  #   - "layer_14-neuron_1829"
+  #   - "layer_15-neuron_2895"
+  #   - "layer_23-neuron_1990"
+  #   - "layer_15-neuron_1659"
+  #   - "layer_13-neuron_588"
+  #   - "layer_16-neuron_122"
+  #   - "layer_15-neuron_2470"
+  #   - "layer_20-neuron_2212"
+  #   - "layer_21-neuron_2212"
+  #   - "layer_13-neuron_39"
+  #   - "layer_14-neuron_3796"
+  #   - "layer_16-neuron_2471"
+    
+  #   # --- Group B: The "2058" Axis (Layers 14-30) ---
+  #   - "layer_14-neuron_2058"
+  #   - "layer_15-neuron_2058"
+  #   - "layer_16-neuron_2058"
+  #   - "layer_17-neuron_2058"
+  #   - "layer_18-neuron_2058"
+  #   - "layer_19-neuron_2058"
+  #   - "layer_20-neuron_2058"
+  #   - "layer_21-neuron_2058"
+  #   - "layer_22-neuron_2058"
+  #   - "layer_23-neuron_2058"
+  #   - "layer_24-neuron_2058"
+  #   - "layer_25-neuron_2058"
+  #   - "layer_26-neuron_2058"
+  #   - "layer_27-neuron_2058"
+  #   - "layer_28-neuron_2058"
+  #   - "layer_29-neuron_2058"
+  #   - "layer_30-neuron_2058"
+  #   - "layer_31-neuron_2058"
+
+  #   # --- Group C: Recovered candidates ---
+  #   - "layer_15-neuron_1829"
+  #   - "layer_14-neuron_805"
+  #   - "layer_15-neuron_1886"
+  #   - "layer_15-neuron_41"
+  #   - "layer_13-neuron_1611"
+  #   - "layer_13-neuron_3564"
+  #   - "layer_18-neuron_2212"
+  #   - "layer_13-neuron_3819"
+
+  #   # --- Group D: New Candidates ---
+  #   - "layer_16-neuron_2145"
+  #   - "layer_30-neuron_341"
+  #   - "layer_10-neuron_3366"
+  #   - "layer_10-neuron_3086"
+  #   - "layer_13-neuron_977"
+  #   - "layer_20-neuron_3356"
+  #   - "layer_13-neuron_1913"
+  #   - "layer_30-neuron_231"
+  #   - "layer_10-neuron_4018"
+  #   - "layer_21-neuron_3491"
+  #   - "layer_29-neuron_3398"
+  #   - "layer_21-neuron_2706"
+  #   - "layer_15-neuron_940"
+  #   - "layer_22-neuron_1455"
+  #   - "layer_18-neuron_2836"
+  #   - "layer_29-neuron_3685"
+  #   - "layer_28-neuron_792"
+  #   - "layer_17-neuron_77"
+
+  bounds: [-2.0, 2.0]
+  sampler: "cmaes"  # "tpe" or "cmaes"
+  n_startup_trials: 100
+  n_trials: 500
+  
+  # Objective: "signed" preserves direction, "absolute" maximizes magnitude
+  objective_mode: "signed"
+  # Direction: "maximize" (right shift) or "minimize" (left shift)
+  direction: null
+
+  study_name: "llama-pi-optimization"
+  storage: null  # Or "sqlite:///runs/optuna_persist/llama_optimization.db"
+  load_if_exists: true
+  
+  fast_mode: false
+  fast_n_pairs: 10
+
+poeta:
+  # Tasks to evaluate (use 'all' for full benchmark, or list specific tasks)
+  tasks:
+    # --- Ethics & Social Bias (Alignment / Stance Proxies) ---
+    # - bigbench_pt_bbq_greedy                      # Bias Benchmark for QA
+    # - bigbench_pt_simple_ethical_questions_greedy # Ethical decision-making in simple scenarios
+
+    # --- General Capabilities (Core Subset) ---
+    - enem_2022_greedy
+    - faquad
+    - math_mc_greedy
+
+  # Few-shot configuration
+  num_fewshot: 5  # Increased from 2 to 5, which is the standard evaluated baseline for most translated tasks in PoETa v2
+
+  # Limit examples per task (null for full evaluation)
+  limit: 300
+
+  # Prompt mode
+  prompt_modes: "dynamic-random"
+
+  # Device and batch settings for PoETa
+  device: "cuda"
+  batch_size: 1
+
+  # Whether to run comparison mode (evaluates both baseline and intervened)
+  compare_baseline: true  # Changed to true to automatically measure if the intervention degraded general capabilities
+
+  # Output configuration
+  output_dir: "runs"
+  save_logs: true
+  description_dict_path: "description.json"

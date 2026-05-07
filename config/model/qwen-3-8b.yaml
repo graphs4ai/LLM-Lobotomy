@@ -1,0 +1,74 @@
+# @package _global_
+model:
+  name: "Qwen/Qwen3-8B"
+  wrapper: "qwen"
+  n_devices: 1  # Number of GPUs (increase if model doesn't fit on one GPU)
+  dtype: "bfloat16"  # "float16" or "bfloat16"
+
+data:
+  activations_artifact_name: "ebouhid-unicamp/activation-stance-classifier/activations-anderson_cured-Qwen3-8B-all:v0"
+
+extraction:
+  batch_size: 8
+  layers: "all"  # "all" or list like [14, 15, 16]
+  device: "cuda"
+  max_length: 1024
+
+ipi_eval:
+  use_chat_format: true
+  multiplier_artifact_name: "ebouhid-unicamp/activation-stance-classifier/Qwen3-8B_signed_minimize_multipliers:latest"
+
+optimization:
+  # Target neurons - use feature_artifact_name to load dynamically from SVM artifact
+  feature_artifact_name: "ebouhid-unicamp/activation-stance-classifier/svm-feature-ranking-activations-anderson_cured-qwen-all:latest"
+  target_neuron_count: 80
+  
+  target_neurons: null
+  bounds: [-6.0, 6.0]
+  sampler: "cmaes"
+  n_startup_trials: 100
+  n_trials: 1000
+  
+  objective_mode: "signed"
+  direction: "maximize"
+
+  study_name: "qwen-3-8b-pi-optimization"
+  storage: null
+
+  load_if_exists: true
+  
+  fast_mode: false
+  fast_n_pairs: 10
+
+poeta:
+  # Tasks to evaluate (use 'all' for full benchmark, or list specific tasks)
+  tasks:
+    # --- Ethics & Social Bias (Alignment / Stance Proxies) ---
+    # - bigbench_pt_bbq_greedy                      # Bias Benchmark for QA
+    # - bigbench_pt_simple_ethical_questions_greedy # Ethical decision-making in simple scenarios
+
+    # --- General Capabilities (Core Subset) ---
+    - enem_2022_greedy
+    - faquad
+    - math_mc_greedy
+
+  # Few-shot configuration
+  num_fewshot: 5  # Increased from 2 to 5, which is the standard evaluated baseline for most translated tasks in PoETa v2
+
+  # Limit examples per task (null for full evaluation)
+  limit: 300
+
+  # Prompt mode
+  prompt_modes: "dynamic-random"
+
+  # Device and batch settings for PoETa
+  device: "cuda"
+  batch_size: 1
+
+  # Whether to run comparison mode (evaluates both baseline and intervened)
+  compare_baseline: true  # Changed to true to automatically measure if the intervention degraded general capabilities
+
+  # Output configuration
+  output_dir: "runs"
+  save_logs: true
+  description_dict_path: "description.json"

@@ -1,25 +1,11 @@
-# ============================================================================
-# BASE CONFIGURATION
-# ============================================================================
-# This is the default config. Override values via CLI or specific config files.
-# Example: python src/train_eval_svc.py data.activations_artifact_name="activations-anderson-llama-all:latest"
-
-# Model configuration
-model:
-  name: "meta-llama/Llama-3.1-8B-Instruct"  # or "google/gemma-3-4b-it"
-  wrapper: "llama"  # "llama" or "gemma"
+defaults:
+  - _self_
+  - model: null  # Leaves the model group blank by default
 
 # Data paths
 data:
-  # Input data for extraction
-  input_csv: "/files/datasets/political_leaning_texts/anderson_propositions_cured.csv"
-
-# Activation extraction settings
-extraction:
-  batch_size: 8
-  layers: "all"  # "all" or list like [14, 15, 16]
-  device: "cuda"
-  max_length: 1024
+  feature_selection_statements: "resources/split_FS.csv"
+  optimization_statements: "resources/split_optim.csv"
 
 # SVM training settings
 training:
@@ -37,9 +23,9 @@ feature_selection:
   n_features: 100
   method_mrmr: "MIQ"
 
-# Likert evaluation settings
-likert:
-  questions_csv: "likert/questions_anderson.csv"
+# IPI evaluation settings
+ipi_eval:
+  questions_csv: "resources/ipi_questions.csv"
   language: "pt"
   use_chat_format: true
   max_new_tokens: 10
@@ -59,3 +45,6 @@ hydra:
 wandb:
   project: "activation-stance-classifier"
   run_name: null
+  log_to_wandb: true
+
+random_state: 42
