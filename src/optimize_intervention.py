@@ -718,7 +718,7 @@ def main(cfg: DictConfig):
 
         split_id = cfg.data.get('split_id', None)
         optimization_dataset_path = hydra.utils.to_absolute_path(
-            cfg.data.get('optimization_dataset', cfg.data.get('optimization_statements'))
+            cfg.data.get('optimization_dataset')
         )
         validation_dataset_path = hydra.utils.to_absolute_path(
             cfg.data.get('validation_dataset', ipi_eval_cfg.questions_csv)

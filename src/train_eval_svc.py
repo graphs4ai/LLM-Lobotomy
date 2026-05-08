@@ -542,10 +542,7 @@ def main(cfg: DictConfig):
 
         model_name = cfg.model.name.split('/')[-1]
         split_id = cfg.data.get('split_id', None)
-        feature_selection_dataset = cfg.data.get(
-            'feature_selection_dataset',
-            cfg.data.get('feature_selection_statements', None)
-        )
+        feature_selection_dataset = cfg.data.get('feature_selection_dataset', None)
         if use_mrmr:
             prefilter_name = str(cfg.feature_selection.get('prefilter', 'f_classif'))
             mrmr_name = str(cfg.feature_selection.get('method_mrmr', 'MIQ'))

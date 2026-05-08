@@ -55,7 +55,7 @@ def main(cfg: DictConfig):
         print(f"Using dataset from artifact: {input_path}")
         wandb_initialized = True
     else:
-        input_path = hydra.utils.to_absolute_path(cfg.data.feature_selection_statements)
+        input_path = hydra.utils.to_absolute_path(cfg.data.feature_selection_dataset)
         wandb_initialized = False
 
     # Determine artifact name based on dataset and model
@@ -77,7 +77,7 @@ def main(cfg: DictConfig):
 
     # Update W&B config
     wandb.config.update({
-        'feature_selection_statements': input_path,
+        'feature_selection_dataset': input_path,
         'dataset_artifact': dataset_artifact_name,
         'output_file': output_path,
         'batch_size': batch_size,
@@ -193,7 +193,7 @@ def main(cfg: DictConfig):
         metadata={
             'model_name': cfg.model.name,
             'model_wrapper': cfg.model.wrapper,
-            'feature_selection_statements': input_path,
+            'feature_selection_dataset': input_path,
             'n_samples': total_samples,
             'n_layers': len(layers),
             'layers': layers,
