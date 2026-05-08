@@ -5,6 +5,11 @@ defaults:
 
 # Data paths
 data:
+  split_id: null
+  feature_selection_dataset: "resources/split_FS.csv"
+  optimization_dataset: "resources/split_optim.csv"
+  validation_dataset: "resources/ipi_questions.csv"
+  ipi_test_dataset: "resources/ipi_questions.csv"
   feature_selection_statements: "resources/split_FS.csv"
   optimization_statements: "resources/split_optim.csv"
 

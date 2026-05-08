@@ -426,7 +426,8 @@ def save_optimization_results(
     baseline_pi: float,
     config: Dict[Any, Any],
     baseline_soft_score: Optional[float] = None,
-    use_soft_metric: bool = False
+    use_soft_metric: bool = False,
+    soft_metrics: Optional[Dict[str, float]] = None,
 ) -> str:
     """
     Saves optimization results to JSON file.
@@ -454,6 +455,7 @@ def save_optimization_results(
             'baseline_soft_score': baseline_soft_score,
             'optimization_mode': 'soft_metric',
             'config': config,
+            'soft_metrics': soft_metrics or {},
             'best_trial': {
                 'trial_number': best_trial.number,
                 'soft_score': best_trial.value,
@@ -478,6 +480,7 @@ def save_optimization_results(
             'baseline_pi': baseline_pi,
             'optimization_mode': 'multi_objective',
             'config': config,
+            'soft_metrics': soft_metrics or {},
             'pareto_front': [
                 {
                     'trial_number': t.number,
@@ -583,29 +586,22 @@ def print_best_soft_trial(
     print("\n" + "=" * 70)
 
 
-def compute_baseline_soft_score(
+def compute_soft_scores(
     wrapper,  # Llama3dot1Wrapper or Gemma3Wrapper
     questions_df: pd.DataFrame,
     positive_token_id: int,
     negative_token_id: int,
-    language: str = "pt"
+    language: str = "pt",
+    activation_multipliers: Optional[Dict[str, float]] = None,
+    label: str = "score",
 ) -> Tuple[float, float]:
     """
-    Computes baseline soft score without any interventions.
+    Computes signed and absolute soft score for a questions dataset.
 
     Returns both the signed and absolute values for reporting.
-
-    Args:
-        wrapper: LLaMA model wrapper
-        questions_df: DataFrame with questions
-        positive_token_id: Token ID for positive stance word
-        negative_token_id: Token ID for negative stance word
-        language: Prompt language
-
-    Returns:
-        Tuple of (signed_soft_score, absolute_soft_score)
     """
-    print("Computing baseline soft score (no intervention)...")
+    mode = "intervened" if activation_multipliers else "baseline"
+    print(f"Computing {label} soft score ({mode})...")
 
     pair_ids = sorted(questions_df['pair_id'].unique())
     total_signed_score = 0.0
@@ -643,7 +639,7 @@ def compute_baseline_soft_score(
 
             soft_score, _ = wrapper.get_soft_stance_score(
                 input_ids=input_ids,
-                activation_multipliers=None,
+                activation_multipliers=activation_multipliers,
                 positive_token_id=positive_token_id,
                 negative_token_id=negative_token_id,
                 language=language
@@ -662,8 +658,8 @@ def compute_baseline_soft_score(
     signed_soft = total_signed_score / valid_pairs if valid_pairs > 0 else 0.0
     abs_soft = abs(signed_soft)
 
-    print(f"Baseline Signed Soft Score: {signed_soft:.6f}")
-    print(f"Baseline |Soft Score| (Polarization): {abs_soft:.6f}")
+    print(f"{label} Signed Soft Score: {signed_soft:.6f}")
+    print(f"{label} |Soft Score| (Polarization): {abs_soft:.6f}")
 
     return signed_soft, abs_soft
 
@@ -722,7 +718,7 @@ def main(cfg: DictConfig):
 
         split_id = cfg.data.get('split_id', None)
         optimization_dataset_path = hydra.utils.to_absolute_path(
-            cfg.data.get('optimization_dataset', cfg.data.optimization_statements)
+            cfg.data.get('optimization_dataset', cfg.data.get('optimization_statements'))
         )
         validation_dataset_path = hydra.utils.to_absolute_path(
             cfg.data.get('validation_dataset', ipi_eval_cfg.questions_csv)
@@ -812,18 +808,16 @@ def main(cfg: DictConfig):
         print(f"Study storage: {storage or 'in-memory'}")
         print(f"Load if exists: {load_if_exists}")
 
-        # Load validation questions
-        eval_questions_path = hydra.utils.to_absolute_path(
-            ipi_eval_cfg.questions_csv)
-        print(f"\nLoading validation questions from {eval_questions_path}...")
-        eval_questions_df = pd.read_csv(eval_questions_path)
-
         # Load optimization questions
-        optim_questions_path = hydra.utils.to_absolute_path(
-            cfg.data.optimization_statements)
+        optim_questions_path = optimization_dataset_path
         print(
             f"\nLoading optimization questions from {optim_questions_path}...")
         optim_questions_df = pd.read_csv(optim_questions_path)
+
+        # Load validation questions
+        eval_questions_path = validation_dataset_path
+        print(f"\nLoading validation questions from {eval_questions_path}...")
+        eval_questions_df = pd.read_csv(eval_questions_path)
 
         # Apply fast mode sampling if enabled (only applies to optimization questions)
         if fast_mode:
@@ -869,13 +863,24 @@ def main(cfg: DictConfig):
             temperature=ipi_eval_cfg.get('temperature', 0.0)
         )
 
-        # Compute baseline soft score (returns both signed and absolute)
-        baseline_signed_soft, baseline_abs_soft = compute_baseline_soft_score(
+        # Compute baseline soft scores on optimization and validation datasets.
+        baseline_opt_signed_soft, baseline_opt_abs_soft = compute_soft_scores(
             wrapper=wrapper,
             questions_df=optim_questions_df,
             positive_token_id=positive_token_id,
             negative_token_id=negative_token_id,
-            language=language
+            language=language,
+            activation_multipliers=None,
+            label="Optimization baseline",
+        )
+        baseline_val_signed_soft, baseline_val_abs_soft = compute_soft_scores(
+            wrapper=wrapper,
+            questions_df=eval_questions_df,
+            positive_token_id=positive_token_id,
+            negative_token_id=negative_token_id,
+            language=language,
+            activation_multipliers=None,
+            label="Validation baseline",
         )
 
         # Create sampler based on config
@@ -936,9 +941,64 @@ def main(cfg: DictConfig):
         )
 
         # Print results
-        baseline_ref = baseline_abs_soft if use_absolute else baseline_signed_soft
+        baseline_ref = baseline_opt_abs_soft if use_absolute else baseline_opt_signed_soft
         print_best_soft_trial(
             study, baseline_ref, objective_mode=objective_mode, direction=direction)
+
+        best_multipliers = study.best_trial.params
+        optim_intervened_signed, optim_intervened_abs = compute_soft_scores(
+            wrapper=wrapper,
+            questions_df=optim_questions_df,
+            positive_token_id=positive_token_id,
+            negative_token_id=negative_token_id,
+            language=language,
+            activation_multipliers=best_multipliers,
+            label="Optimization intervened",
+        )
+        val_intervened_signed, val_intervened_abs = compute_soft_scores(
+            wrapper=wrapper,
+            questions_df=eval_questions_df,
+            positive_token_id=positive_token_id,
+            negative_token_id=negative_token_id,
+            language=language,
+            activation_multipliers=best_multipliers,
+            label="Validation intervened",
+        )
+
+        if use_absolute:
+            soft_ipi_optimization_baseline = baseline_opt_abs_soft
+            soft_ipi_optimization_intervened = optim_intervened_abs
+            soft_ipi_validation_baseline = baseline_val_abs_soft
+            soft_ipi_validation_intervened = val_intervened_abs
+        else:
+            soft_ipi_optimization_baseline = baseline_opt_signed_soft
+            soft_ipi_optimization_intervened = optim_intervened_signed
+            soft_ipi_validation_baseline = baseline_val_signed_soft
+            soft_ipi_validation_intervened = val_intervened_signed
+
+        delta_soft_ipi_optimization = (
+            soft_ipi_optimization_intervened - soft_ipi_optimization_baseline
+        )
+        delta_soft_ipi_validation = (
+            soft_ipi_validation_intervened - soft_ipi_validation_baseline
+        )
+
+        print("\nSoft metric summary:")
+        print(f"  Optimization baseline:   {soft_ipi_optimization_baseline:.6f}")
+        print(f"  Optimization intervened: {soft_ipi_optimization_intervened:.6f}")
+        print(f"  Delta optimization:      {delta_soft_ipi_optimization:+.6f}")
+        print(f"  Validation baseline:     {soft_ipi_validation_baseline:.6f}")
+        print(f"  Validation intervened:   {soft_ipi_validation_intervened:.6f}")
+        print(f"  Delta validation:        {delta_soft_ipi_validation:+.6f}")
+
+        soft_metrics = {
+            'soft_ipi_optimization_baseline': soft_ipi_optimization_baseline,
+            'soft_ipi_optimization_intervened': soft_ipi_optimization_intervened,
+            'delta_soft_ipi_optimization': delta_soft_ipi_optimization,
+            'soft_ipi_validation_baseline': soft_ipi_validation_baseline,
+            'soft_ipi_validation_intervened': soft_ipi_validation_intervened,
+            'delta_soft_ipi_validation': delta_soft_ipi_validation,
+        }
 
         # Save results
         config_dict = OmegaConf.to_container(cfg, resolve=True)
@@ -952,7 +1012,8 @@ def main(cfg: DictConfig):
             baseline_pi=baseline_pi,
             config=config_dict,
             baseline_soft_score=baseline_ref,
-            use_soft_metric=True
+            use_soft_metric=True,
+            soft_metrics=soft_metrics,
         )
 
         print(f"\nResults saved to: {results_path}")
@@ -980,6 +1041,7 @@ def main(cfg: DictConfig):
                 'validation_dataset': validation_dataset_path,
                 'seed': seed,
                 'n_target_neurons': len(target_neurons),
+                **soft_metrics,
             }
         )
         multipliers_artifact.add_file(results_path)
@@ -1002,6 +1064,7 @@ def main(cfg: DictConfig):
             'validation_dataset': validation_dataset_path,
             'seed': seed,
             'n_target_neurons': len(target_neurons),
+            **soft_metrics,
         })
 
         # Print best solution for easy copy-paste into config

@@ -872,15 +872,32 @@ seed
 
 Tasks:
 
-- [ ] Generate one baseline Likert command per model/split.
-- [ ] Generate one intervened Likert command per multiplier artifact.
-- [ ] Store baseline artifact reference in every job manifest.
-- [ ] Validate that baseline metadata matches before reuse.
+- [x] Generate one baseline Likert command per model/split.
+- [x] Generate one intervened Likert command per multiplier artifact.
+- [x] Store baseline artifact reference in every job manifest.
+- [x] Validate that baseline metadata matches before reuse.
 
 Status notes:
 
 ```text
-Not started.
+Completed on 2026-05-08.
+
+Implementation notes:
+- Updated `src/run_pipeline.py` to de-duplicate baseline Likert scheduling with a baseline reuse key.
+- Baseline reuse key fields:
+  - model
+  - split_id
+  - ipi_test_dataset (fallback to ipi_eval.questions_csv)
+  - likert.prompt_template_version
+  - likert.parser_version
+  - likert.temperature
+  - likert.decoding_strategy
+  - seed
+- Behavior:
+  - baseline command scheduled only once per unique baseline key;
+  - intervened command remains per concrete multiplier job (direction/top_k/n_trials);
+  - every job manifest still includes `artifacts.likert_baseline` reference.
+- Validation via dry-run showed exactly one baseline command for `small_k_trials` and reuse messaging on remaining jobs.
 ```
 
 ---
@@ -891,13 +908,13 @@ Goal: distinguish optimization failure, overfitting, and soft/discrete mismatch.
 
 Tasks:
 
-- [ ] Add `data.optimization_dataset`.
-- [ ] Add `data.validation_dataset`.
-- [ ] Add optional `optimization.validation_fraction`.
-- [ ] Add optional `optimization.split_seed`.
-- [ ] Report optimization soft metrics.
-- [ ] Report validation soft metrics.
-- [ ] Store these metrics in W&B and/or local manifest.
+- [x] Add `data.optimization_dataset`.
+- [x] Add `data.validation_dataset`.
+- [x] Add optional `optimization.validation_fraction`.
+- [x] Add optional `optimization.split_seed`.
+- [x] Report optimization soft metrics.
+- [x] Report validation soft metrics.
+- [x] Store these metrics in W&B and/or local manifest.
 
 Required metrics:
 
@@ -929,7 +946,37 @@ discrete optimization moves but discrete test does not:
 Status notes:
 
 ```text
-Not started.
+Completed on 2026-05-08.
+
+Implementation notes:
+- Added normalized data fields in `config/config.yaml`:
+  - data.split_id
+  - data.feature_selection_dataset
+  - data.optimization_dataset
+  - data.validation_dataset
+  - data.ipi_test_dataset
+- Updated `src/optimize_intervention.py` to load:
+  - optimization questions from `data.optimization_dataset` (fallback legacy field)
+  - validation questions from `data.validation_dataset` (fallback legacy path)
+- Added soft-score evaluation for both baseline and best-intervened multipliers on:
+  - optimization dataset
+  - validation dataset
+- Computed and recorded required metrics:
+  - soft_ipi_optimization_baseline
+  - soft_ipi_optimization_intervened
+  - delta_soft_ipi_optimization
+  - soft_ipi_validation_baseline
+  - soft_ipi_validation_intervened
+  - delta_soft_ipi_validation
+- Persisted metrics to:
+  - W&B summary
+  - optimization artifact metadata
+  - local optimization results JSON (`soft_metrics` section)
+- Kept objective/intervention behavior unchanged (metrics are additional reporting).
+
+Validation commands:
+- `python -m py_compile src/optimize_intervention.py src/run_pipeline.py src/train_eval_svc.py`
+- `python src/optimize_intervention.py model=gemma-3-4b --cfg job`
 ```
 
 ---
@@ -1201,6 +1248,8 @@ Record implementation decisions here.
 
 | Date | Decision | Rationale | Files affected |
 |---|---|---|---|
+| 2026-05-08 | Report soft metrics on both optimization and validation splits for baseline/intervened | Distinguishes optimization failure from overfitting and supports soft/discrete mismatch diagnosis | src/optimize_intervention.py, config/config.yaml |
+| 2026-05-08 | Baseline Likert scheduling is keyed by model/split/eval settings | Prevents redundant baseline evaluations while preserving explicit per-job baseline artifact references | src/run_pipeline.py |
 | 2026-05-08 | Execute pipeline commands from project root using subprocess in run_pipeline | Keeps relative script paths stable under Hydra and ensures manifest status transitions are atomic per job | src/run_pipeline.py |
 | 2026-05-08 | Completed manifests are preserved and skipped under resume mode | Prevents redundant reruns while keeping completed state as durable pipeline truth | src/run_pipeline.py |
 | 2026-05-08 | Use model config names (e.g. `gemma-3-4b`) as deterministic pipeline identifiers | Keeps run/artifact IDs stable, short, and aligned with `model=<name>` sweep dimension | src/run_pipeline.py |
@@ -1239,7 +1288,7 @@ Track unresolved questions here.
 ## Last Successful Command
 
 ```bash
-python src/run_pipeline.py experiment=k80_trials pipeline.dry_run=true pipeline.resume=true pipeline.force=false pipeline.skip_existing=true
+python src/optimize_intervention.py model=gemma-3-4b --cfg job
 ```
 
 ---
@@ -1258,6 +1307,6 @@ Fixed keys/call signatures and revalidated dry-run/resume/force behavior.
 
 ```text
 Status: in progress
-Current stage: Stage 10 — Baseline Likert reuse
-Next action: de-duplicate baseline Likert scheduling in run_pipeline.py and store reusable baseline artifact reference in each job manifest.
+Current stage: Stage 12 — Sweep summary generation
+Next action: create src/summarize_sweep.py to aggregate manifests into summary.csv and summary.md.
 ```

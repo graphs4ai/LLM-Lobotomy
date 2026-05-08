@@ -46,6 +46,7 @@ def _build_commands(
     top_k: int,
     n_trials: int,
     stages: DictConfig,
+    include_baseline_likert: bool,
 ) -> list[str]:
     cmds: list[str] = []
     if stages.get("extract_activations", False):
@@ -58,7 +59,7 @@ def _build_commands(
             f"model={model_cfg_name} optimization.direction={direction} "
             f"optimization.top_k={top_k} optimization.n_trials={n_trials}"
         )
-    if stages.get("likert_baseline", False):
+    if stages.get("likert_baseline", False) and include_baseline_likert:
         cmds.append(
             "python src/likert_scale_test.py "
             f"model={model_cfg_name} likert.condition=baseline"
@@ -129,6 +130,30 @@ def _execute_job_commands(
     _write_manifest(manifest_path, completed_manifest)
 
 
+def _baseline_reuse_key(
+    model_cfg_name: str,
+    split_id: str,
+    seed: int,
+    cfg: DictConfig,
+) -> tuple[Any, ...]:
+    """
+    Build the baseline reuse key from settings that define baseline equivalence.
+    """
+    likert_cfg = cfg.get("likert", {})
+    data_cfg = cfg.get("data", {})
+    ipi_test_dataset = data_cfg.get("ipi_test_dataset", cfg.ipi_eval.questions_csv)
+    return (
+        model_cfg_name,
+        split_id,
+        str(ipi_test_dataset),
+        str(likert_cfg.get("prompt_template_version", "default")),
+        str(likert_cfg.get("parser_version", "default")),
+        float(likert_cfg.get("temperature", 0)),
+        str(likert_cfg.get("decoding_strategy", "greedy")),
+        int(seed),
+    )
+
+
 @hydra.main(version_base=None, config_path="../config", config_name="config")
 def main(cfg: DictConfig) -> None:
     if cfg.get("experiment") is None:
@@ -163,6 +188,7 @@ def main(cfg: DictConfig) -> None:
     resume = bool(cfg.pipeline.get("resume", True))
     force = bool(cfg.pipeline.get("force", False))
     skip_existing = bool(cfg.pipeline.get("skip_existing", True))
+    scheduled_baseline_keys: set[tuple[Any, ...]] = set()
 
     for model_cfg_name in experiment.models:
         model_cfg_name = str(model_cfg_name)
@@ -186,6 +212,13 @@ def main(cfg: DictConfig) -> None:
                         if previous_manifest is not None
                         else None
                     )
+                    baseline_key = _baseline_reuse_key(
+                        model_cfg_name=model_cfg_name,
+                        split_id=split_id,
+                        seed=seed,
+                        cfg=cfg,
+                    )
+                    include_baseline_likert = baseline_key not in scheduled_baseline_keys
 
                     if _should_skip_existing(previous_status, resume, force, skip_existing):
                         skipped_count += 1
@@ -239,6 +272,7 @@ def main(cfg: DictConfig) -> None:
                             top_k=top_k,
                             n_trials=n_trials,
                             stages=experiment.stages,
+                            include_baseline_likert=include_baseline_likert,
                         )
                         manifest = {
                             "run_id": run_id,
@@ -263,6 +297,10 @@ def main(cfg: DictConfig) -> None:
                         for cmd in commands:
                             print(f"  - {cmd}")
                         print(f"  manifest: {manifest_path}")
+                        if include_baseline_likert and experiment.stages.get("likert_baseline", False):
+                            scheduled_baseline_keys.add(baseline_key)
+                        else:
+                            print("  baseline likert: reused (not rescheduled)")
 
                         if not dry_run:
                             _execute_job_commands(
