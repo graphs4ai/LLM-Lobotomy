@@ -993,11 +993,11 @@ src/summarize_sweep.py
 
 Required behavior:
 
-- [ ] Scan `runs/pipeline/*/manifest.json`.
-- [ ] Write `runs/pipeline/summary.csv`.
-- [ ] Write `runs/pipeline/summary.md`.
-- [ ] Do not depend on W&B in the first implementation pass.
-- [ ] Include failed and skipped jobs in the summary.
+- [x] Scan `runs/pipeline/*/manifest.json`.
+- [x] Write `runs/pipeline/summary.csv`.
+- [x] Write `runs/pipeline/summary.md`.
+- [x] Do not depend on W&B in the first implementation pass.
+- [x] Include failed and skipped jobs in the summary.
 
 Minimum columns:
 
@@ -1038,7 +1038,23 @@ Questions the summary must answer:
 Status notes:
 
 ```text
-Not started.
+Completed on 2026-05-08.
+
+Implementation notes:
+- Added `src/summarize_sweep.py`.
+- Implemented manifest scan using local files only:
+  - `runs/pipeline/*/manifest.json`
+- Added flattening logic from manifest shape to required summary columns.
+- Writes:
+  - `runs/pipeline/summary.csv`
+  - `runs/pipeline/summary.md`
+- Includes all discovered manifest statuses (including failed/skipped) in outputs.
+- No W&B dependency used in this first-pass summary implementation.
+
+Validation commands:
+- `python -m py_compile src/summarize_sweep.py`
+- `python src/summarize_sweep.py`
+  - Result: scanned 12 manifests and generated both summary files.
 ```
 
 ---
@@ -1248,6 +1264,7 @@ Record implementation decisions here.
 
 | Date | Decision | Rationale | Files affected |
 |---|---|---|---|
+| 2026-05-08 | Keep summary generation fully local in first pass (manifest-only) | Avoids extra network coupling and makes sweep recap reproducible from workspace state alone | src/summarize_sweep.py |
 | 2026-05-08 | Report soft metrics on both optimization and validation splits for baseline/intervened | Distinguishes optimization failure from overfitting and supports soft/discrete mismatch diagnosis | src/optimize_intervention.py, config/config.yaml |
 | 2026-05-08 | Baseline Likert scheduling is keyed by model/split/eval settings | Prevents redundant baseline evaluations while preserving explicit per-job baseline artifact references | src/run_pipeline.py |
 | 2026-05-08 | Execute pipeline commands from project root using subprocess in run_pipeline | Keeps relative script paths stable under Hydra and ensures manifest status transitions are atomic per job | src/run_pipeline.py |
@@ -1288,7 +1305,7 @@ Track unresolved questions here.
 ## Last Successful Command
 
 ```bash
-python src/optimize_intervention.py model=gemma-3-4b --cfg job
+python src/summarize_sweep.py
 ```
 
 ---
@@ -1307,6 +1324,6 @@ Fixed keys/call signatures and revalidated dry-run/resume/force behavior.
 
 ```text
 Status: in progress
-Current stage: Stage 12 — Sweep summary generation
-Next action: create src/summarize_sweep.py to aggregate manifests into summary.csv and summary.md.
+Current stage: Post-stage implementation review
+Next action: run acceptance command set and decide whether to commit stage-12 deliverables.
 ```
