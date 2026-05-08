@@ -1,0 +1,23 @@
+name: k80_trials
+split_id: three_way_split_v1
+seed: 42
+
+models:
+  - gemma-3-4b
+
+directions:
+  - minimize
+
+feature_counts:
+  - 80
+
+trial_grid:
+  "80": [500, 1500, 3000]
+
+stages:
+  extract_activations: true
+  feature_selection: true
+  optimization: true
+  likert_baseline: true
+  likert_intervened: true
+  poeta: false

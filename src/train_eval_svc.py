@@ -12,6 +12,8 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.inspection import DecisionBoundaryDisplay
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
 import os
+import json
+import re
 # import loguru as logging (we'll use it later)
 import logging
 import hydra
@@ -21,6 +23,17 @@ from sklearn.model_selection import StratifiedKFold
 from mrmr import mrmr_classif
 import wandb
 from omegaconf import DictConfig, OmegaConf
+
+
+def _extract_layer_and_feature(feature_name: str) -> tuple[int | None, int | None]:
+    """
+    Parse feature strings like `layer_15-neuron_1215` into integers.
+    Returns (None, None) when pattern is unavailable.
+    """
+    match = re.match(r"layer_(\d+)-neuron_(\d+)$", str(feature_name))
+    if not match:
+        return None, None
+    return int(match.group(1)), int(match.group(2))
 
 
 def plot_svm_decision_boundary(X, y, clf, le, output_path, title="SVC Decision Boundary (PCA reduced)"):
@@ -347,17 +360,43 @@ def main(cfg: DictConfig):
         all_selected = [
             f for fold_features in fold_selected_features for f in fold_features]
         feature_counts = Counter(all_selected)
-        most_common = feature_counts.most_common()
+        # Build a full ranking over all available features so downstream stages can
+        # request arbitrary top_k slices from a stable ranked artifact.
+        full_feature_rows = []
+        for feature in feature_names:
+            selection_count = int(feature_counts.get(feature, 0))
+            selection_frequency = selection_count / k_folds
+            full_feature_rows.append({
+                'feature': feature,
+                'selection_count': selection_count,
+                'selection_frequency': selection_frequency,
+            })
+        full_feature_ranking_df = pd.DataFrame(full_feature_rows)
+        full_feature_ranking_df = full_feature_ranking_df.sort_values(
+            by=['selection_count', 'selection_frequency', 'feature'],
+            ascending=[False, False, True]
+        ).reset_index(drop=True)
+        full_feature_ranking_df['rank'] = range(1, len(full_feature_ranking_df) + 1)
+        full_feature_ranking_df = full_feature_ranking_df[
+            ['rank', 'feature', 'selection_count', 'selection_frequency']
+        ]
+
+        ranking_top_n = int(cfg.feature_selection.get('ranking_top_n', 256))
+        if ranking_top_n <= 0:
+            raise ValueError(
+                f"feature_selection.ranking_top_n must be > 0, got {ranking_top_n}"
+            )
+        if ranking_top_n > len(full_feature_ranking_df):
+            logger.warning(
+                "Requested ranking_top_n=%s but only %s features available; using all features.",
+                ranking_top_n, len(full_feature_ranking_df)
+            )
+
+        feature_ranking_df = full_feature_ranking_df.head(ranking_top_n).copy()
 
         # Feature ranking
         logger.info(
             f"\n--- Feature Ranking (by selection frequency across folds) ---")
-        feature_ranking_df = pd.DataFrame(
-            most_common, columns=['feature', 'selection_count'])
-        feature_ranking_df['selection_frequency'] = feature_ranking_df['selection_count'] / k_folds
-        feature_ranking_df['rank'] = range(1, len(feature_ranking_df) + 1)
-        feature_ranking_df = feature_ranking_df[[
-            'rank', 'feature', 'selection_count', 'selection_frequency']]
         logger.info(f"\n{feature_ranking_df.to_string()}")
 
         # Use most frequently selected features for final model
@@ -501,6 +540,52 @@ def main(cfg: DictConfig):
         logger.info(
             f"Feature ranking CSV saved to: {feature_ranking_csv_path}")
 
+        model_name = cfg.model.name.split('/')[-1]
+        split_id = cfg.data.get('split_id', None)
+        feature_selection_dataset = cfg.data.get(
+            'feature_selection_dataset',
+            cfg.data.get('feature_selection_statements', None)
+        )
+        if use_mrmr:
+            prefilter_name = str(cfg.feature_selection.get('prefilter', 'f_classif'))
+            mrmr_name = str(cfg.feature_selection.get('method_mrmr', 'MIQ'))
+            feature_selection_method = f"{prefilter_name}+mrmr:{mrmr_name}"
+        else:
+            feature_selection_method = "no_feature_selection"
+        fs_seed = int(cfg.feature_selection.get(
+            'seed',
+            cfg.training.get('random_state', cfg.get('random_state', 42))
+        ))
+        ranking_top_n_effective = len(feature_ranking_df)
+
+        ranked_features = []
+        for row in feature_ranking_df.to_dict(orient='records'):
+            layer_idx, feature_idx = _extract_layer_and_feature(row['feature'])
+            ranked_features.append({
+                'rank': int(row['rank']),
+                'layer': layer_idx,
+                'feature': feature_idx,
+                'feature_name': row['feature'],
+                'score': None,
+                'selection_frequency': float(row['selection_frequency']),
+                'selection_count': int(row['selection_count']),
+            })
+
+        ranking_payload = {
+            'model_name': model_name,
+            'split_id': split_id,
+            'feature_selection_dataset': feature_selection_dataset,
+            'method': feature_selection_method,
+            'ranking_top_n': ranking_top_n_effective,
+            'seed': fs_seed,
+            'ranked_features': ranked_features,
+        }
+        feature_ranking_json_path = os.path.join(run_dir, "feature_ranking.json")
+        with open(feature_ranking_json_path, 'w', encoding='utf-8') as f:
+            json.dump(ranking_payload, f, indent=2, ensure_ascii=False)
+        logger.info(
+            f"Feature ranking JSON saved to: {feature_ranking_json_path}")
+
         # Create and log artifact
         feature_artifact = wandb.Artifact(
             name=f"svm-feature-ranking-{activations_artifact_name.split(':')[0].split('/')[-1]}",
@@ -512,9 +597,16 @@ def main(cfg: DictConfig):
                 'n_features_to_select': n_features_to_select,
                 'selectkbest_k': selectkbest_k,
                 'holdout_accuracy': holdout_accuracy,
+                'model_name': model_name,
+                'split_id': split_id,
+                'feature_selection_dataset': feature_selection_dataset,
+                'method': feature_selection_method,
+                'ranking_top_n': ranking_top_n_effective,
+                'seed': fs_seed,
             }
         )
         feature_artifact.add_file(feature_ranking_csv_path)
+        feature_artifact.add_file(feature_ranking_json_path)
         wandb.log_artifact(feature_artifact)
         logger.info(f"Feature ranking artifact logged: {feature_artifact.name}")
     else:

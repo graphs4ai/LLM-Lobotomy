@@ -1,0 +1,29 @@
+name: small_k_trials
+split_id: three_way_split_v1
+seed: 42
+
+models:
+  - gemma-3-4b
+
+directions:
+  - minimize
+
+feature_counts:
+  - 4
+  - 8
+  - 16
+  - 32
+
+trial_grid:
+  "4": [500]
+  "8": [500, 1000]
+  "16": [1000, 2000]
+  "32": [2000, 3000]
+
+stages:
+  extract_activations: false
+  feature_selection: false
+  optimization: true
+  likert_baseline: true
+  likert_intervened: true
+  poeta: false

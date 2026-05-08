@@ -14,7 +14,6 @@ from datetime import datetime
 import wandb
 
 from model_factory import get_model_wrapper
-from compile_target_neurons import compile_target_neurons
 from likert_scale_test import (
     run_likert_test_streaming,
     compute_kl_divergence,
@@ -22,6 +21,21 @@ from likert_scale_test import (
     create_likert_prompt,
     format_chat_prompt
 )
+
+
+def _ranked_feature_to_neuron_name(entry: dict[str, Any]) -> str:
+    """Convert ranked feature entries into `layer_X-neuron_Y` names."""
+    feature_name = entry.get("feature_name")
+    if feature_name:
+        return str(feature_name)
+
+    layer = entry.get("layer")
+    feature = entry.get("feature")
+    if layer is None or feature is None:
+        raise ValueError(
+            "Each ranked feature must provide either feature_name or both layer and feature."
+        )
+    return f"layer_{int(layer)}-neuron_{int(feature)}"
 
 
 class TeeOutput:
@@ -675,7 +689,27 @@ def main(cfg: DictConfig):
         # W&B configuration
         wandb_cfg = cfg.get('wandb', {})
         feature_artifact_name = opt_cfg.get('feature_artifact_name', None)
-        target_neuron_count = opt_cfg.get('target_neuron_count', 80)
+        top_k = opt_cfg.get('top_k', opt_cfg.get('target_neuron_count', 80))
+        n_trials = opt_cfg.get('n_trials', 3000)
+        direction = opt_cfg.get('direction', 'maximize')
+        seed = opt_cfg.get('seed', cfg.get('random_state', 42))
+
+        if top_k is None or int(top_k) <= 0:
+            raise ValueError(
+                f"Invalid optimization.top_k={top_k!r}. Expected a positive integer."
+            )
+        if n_trials is None or int(n_trials) <= 0:
+            raise ValueError(
+                f"Invalid optimization.n_trials={n_trials!r}. Expected a positive integer."
+            )
+        if direction not in ('maximize', 'minimize'):
+            raise ValueError(
+                f"Invalid optimization.direction={direction!r}. Expected 'maximize' or 'minimize'."
+            )
+
+        top_k = int(top_k)
+        n_trials = int(n_trials)
+        seed = int(seed)
 
         # Initialize W&B with job_type="optimization"
         wandb_config = OmegaConf.to_container(cfg, resolve=True)
@@ -686,6 +720,14 @@ def main(cfg: DictConfig):
             config=wandb_config
         )
 
+        split_id = cfg.data.get('split_id', None)
+        optimization_dataset_path = hydra.utils.to_absolute_path(
+            cfg.data.get('optimization_dataset', cfg.data.optimization_statements)
+        )
+        validation_dataset_path = hydra.utils.to_absolute_path(
+            cfg.data.get('validation_dataset', ipi_eval_cfg.questions_csv)
+        )
+
         # Determine target neurons: from artifact or config
         if feature_artifact_name:
             # Fetch SVM feature ranking artifact dynamically
@@ -694,26 +736,38 @@ def main(cfg: DictConfig):
             artifact = wandb.use_artifact(feature_artifact_name)
             artifact_dir = artifact.download()
 
-            # Load CSV and compile target neurons
-            feature_ranking_path = os.path.join(
-                artifact_dir, "feature_ranking.csv")
-            feature_ranking_df = pd.read_csv(feature_ranking_path)
-            print(
-                f"Loaded feature ranking with {len(feature_ranking_df)} features")
+            # Load ranked feature payload and slice top_k deterministically.
+            feature_ranking_path = os.path.join(artifact_dir, "feature_ranking.json")
+            if not os.path.exists(feature_ranking_path):
+                raise FileNotFoundError(
+                    "feature_ranking.json not found in feature artifact. "
+                    "Stage 5 requires ranked_features JSON payload."
+                )
+            with open(feature_ranking_path, "r", encoding="utf-8") as f:
+                feature_ranking_payload = json.load(f)
+            ranked_features = feature_ranking_payload.get("ranked_features", [])
+            if not isinstance(ranked_features, list):
+                raise ValueError("Invalid feature_ranking.json: ranked_features must be a list.")
 
-            # Compile target neurons using the feature analysis function
-            target_neurons = compile_target_neurons(
-                feature_ranking_df,
-                target_count=target_neuron_count
-            )
             print(
-                f"Compiled {len(target_neurons)} target neurons from artifact")
+                f"Loaded feature ranking with {len(ranked_features)} features")
+            if top_k > len(ranked_features):
+                raise ValueError(
+                    f"optimization.top_k={top_k} exceeds available ranked_features={len(ranked_features)}."
+                )
+
+            selected_features = ranked_features[:top_k]
+            target_neurons = [
+                _ranked_feature_to_neuron_name(feature_entry)
+                for feature_entry in selected_features
+            ]
+            print(
+                f"Selected {len(target_neurons)} target neurons from ranked_features[:top_k]")
         else:
             # Use target neurons from YAML config
             target_neurons = list(opt_cfg.target_neurons)
 
         bounds = (opt_cfg.bounds[0], opt_cfg.bounds[1])
-        n_trials = opt_cfg.n_trials
         study_name = opt_cfg.study_name
         storage = opt_cfg.get('storage', None)
         load_if_exists = opt_cfg.get('load_if_exists', True)
@@ -725,8 +779,6 @@ def main(cfg: DictConfig):
         # Objective configuration
         objective_mode = opt_cfg.get(
             'objective_mode', 'signed')  # 'signed' or 'absolute'
-        # 'maximize' or 'minimize'
-        direction = opt_cfg.get('direction', 'maximize')
         use_absolute = objective_mode == 'absolute'
 
         # Validate configuration
@@ -741,6 +793,7 @@ def main(cfg: DictConfig):
         print("=" * 70)
         print("NEURON INTERVENTION OPTIMIZATION (SOFT METRIC)")
         print("=" * 70)
+        print(f"\nSeed: {seed}")
         print(f"\nOptimization Mode: Soft Metric (logit difference)")
         print(f"  - Objective mode: {objective_mode}")
         print(f"  - Direction: {direction}")
@@ -830,16 +883,16 @@ def main(cfg: DictConfig):
 
         if sampler_type == 'cmaes':
             print(
-                f"Using CmaEsSampler (seed={cfg.get('random_state', 42)})...")
+                f"Using CmaEsSampler (seed={seed})...")
             sampler = CmaEsSampler(
-                seed=cfg.get('random_state', 42),
+                seed=seed,
                 n_startup_trials=n_startup_trials
             )
         else:
             # Default to TPE
-            print(f"Using TPESampler (seed={cfg.get('random_state', 42)})...")
+            print(f"Using TPESampler (seed={seed})...")
             sampler = TPESampler(
-                seed=cfg.get('random_state', 42),
+                seed=seed,
                 multivariate=True,
                 n_startup_trials=n_startup_trials
             )
@@ -920,6 +973,12 @@ def main(cfg: DictConfig):
                 'n_trials': len(study.trials),
                 'objective_mode': objective_mode,
                 'direction': direction,
+                'top_k': top_k,
+                'split_id': split_id,
+                'feature_artifact_name': feature_artifact_name,
+                'optimization_dataset': optimization_dataset_path,
+                'validation_dataset': validation_dataset_path,
+                'seed': seed,
                 'n_target_neurons': len(target_neurons),
             }
         )
@@ -935,6 +994,13 @@ def main(cfg: DictConfig):
             'best_soft_score': best_trial.value,
             'n_trials': len(study.trials),
             'best_trial': best_trial.number,
+            'top_k': top_k,
+            'direction': direction,
+            'split_id': split_id,
+            'feature_artifact_name': feature_artifact_name,
+            'optimization_dataset': optimization_dataset_path,
+            'validation_dataset': validation_dataset_path,
+            'seed': seed,
             'n_target_neurons': len(target_neurons),
         })
 

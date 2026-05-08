@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - model: null  # Leaves the model group blank by default
+  - experiment: null  # Optional experiment matrix for pipeline orchestration
 
 # Data paths
 data:
@@ -21,7 +22,18 @@ feature_selection:
   selectkbest_k: 1000
   prefilter: "f_classif"
   n_features: 100
+  method: "anova_mrmr"
   method_mrmr: "MIQ"
+  ranking_top_n: 256
+  seed: 42
+
+likert:
+  condition: baseline
+  multiplier_artifact_name: null
+  prompt_template_version: default
+  parser_version: default
+  temperature: 0
+  decoding_strategy: greedy
 
 # IPI evaluation settings
 ipi_eval:
@@ -35,6 +47,28 @@ ipi_eval:
   # W&B artifact name for multipliers (optional, overrides activation_multipliers)
   multiplier_artifact_name: null
   job_type: "likert_eval"
+
+optimization:
+  direction: minimize
+  top_k: 80
+  n_trials: 500
+  seed: 42
+  objective_mode: soft_ipi
+  validation_fraction: null
+  split_seed: 42
+
+artifacts:
+  activations_name: null
+  feature_ranking_name: null
+  multiplier_name: null
+  likert_baseline_name: null
+  likert_intervened_name: null
+
+pipeline:
+  dry_run: true
+  resume: true
+  force: false
+  skip_existing: true
 
 # Hydra output directory
 hydra:
