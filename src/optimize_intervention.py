@@ -1021,7 +1021,19 @@ def main(cfg: DictConfig):
 
         # --- ARTIFACT: Log intervention multipliers as versioned model-weights artifact ---
         best_trial = study.best_trial
-        multipliers_artifact_name = f"{wrapper.model.cfg.model_name}_{objective_mode}_{direction}_multipliers"
+        artifacts_cfg = cfg.get('artifacts', {}) or {}
+        multiplier_override = artifacts_cfg.get('multiplier_name', None)
+        if multiplier_override:
+            multipliers_artifact_name = str(multiplier_override)
+        else:
+            # Fallback name now includes top_k/n_trials/seed so concurrent
+            # sweep jobs over (k, trials) don't collide on the same artifact.
+            multipliers_artifact_name = (
+                f"{wrapper.model.cfg.model_name}"
+                f"_{objective_mode}_{direction}"
+                f"_k{top_k}_trials{n_trials}_seed{seed}"
+                f"_multipliers"
+            )
         multipliers_artifact = wandb.Artifact(
             name=multipliers_artifact_name,
             type="model-weights",

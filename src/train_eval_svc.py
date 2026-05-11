@@ -583,9 +583,25 @@ def main(cfg: DictConfig):
         logger.info(
             f"Feature ranking JSON saved to: {feature_ranking_json_path}")
 
-        # Create and log artifact
+        # Create and log artifact. Orchestrator-supplied name wins over the
+        # default derived from the input activations artifact, so sweep jobs
+        # can advertise deterministic feature-ranking identities.
+        artifacts_cfg = cfg.get('artifacts', {}) or {}
+        feature_ranking_override = artifacts_cfg.get('feature_ranking_name', None)
+        if feature_ranking_override:
+            feature_artifact_name_out = str(feature_ranking_override)
+        elif activations_artifact_name:
+            feature_artifact_name_out = (
+                f"svm-feature-ranking-"
+                f"{activations_artifact_name.split(':')[0].split('/')[-1]}"
+            )
+        else:
+            feature_artifact_name_out = (
+                f"svm-feature-ranking-{cfg.model.name.split('/')[-1]}"
+            )
+
         feature_artifact = wandb.Artifact(
-            name=f"svm-feature-ranking-{activations_artifact_name.split(':')[0].split('/')[-1]}",
+            name=feature_artifact_name_out,
             type="dataset",
             description="SVM feature ranking from MRMR selection across CV folds",
             metadata={

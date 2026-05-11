@@ -64,7 +64,16 @@ def main(cfg: DictConfig):
     model_name = cfg.model.name.split('/')[-1]
     layers = cfg.extraction.layers
     layers_str = 'all' if layers == 'all' else f"L{str(layers)}"
-    artifact_name = f"activations-{dataset_name}-{model_name}-{layers_str}"
+
+    # Orchestrator-driven name takes precedence over the dataset-derived default
+    # so a sweep can pin a deterministic identity (see src/utils/experiment_ids.py).
+    artifacts_cfg = cfg.get('artifacts', {}) or {}
+    override_name = artifacts_cfg.get('activations_name', None)
+    artifact_name = (
+        str(override_name)
+        if override_name
+        else f"activations-{dataset_name}-{model_name}-{layers_str}"
+    )
     output_path = f"data/{artifact_name}.parquet"
 
     # Initialize W&B with job_type="extraction" (if not already initialized for artifact download)
