@@ -5,9 +5,6 @@ model:
   n_devices: 1  # Number of GPUs (increase if model doesn't fit on one GPU)
   dtype: "bfloat16"  # "float16" or "bfloat16"
 
-data:
-  activations_artifact_name: "ebouhid-unicamp/activation-stance-classifier/activations-anderson_cured-Qwen3-8B-all:v0"
-
 extraction:
   batch_size: 8
   layers: "all"  # "all" or list like [14, 15, 16]
@@ -16,19 +13,20 @@ extraction:
 
 ipi_eval:
   use_chat_format: true
-  multiplier_artifact_name: "ebouhid-unicamp/activation-stance-classifier/Qwen3-8B_signed_minimize_multipliers:latest"
 
 optimization:
-  # Target neurons - use feature_artifact_name to load dynamically from SVM artifact
-  feature_artifact_name: "ebouhid-unicamp/activation-stance-classifier/svm-feature-ranking-activations-anderson_cured-qwen-all:latest"
+  # Artifact identities (data.activations_artifact_name, optimization.feature_artifact_name,
+  # ipi_eval.multiplier_artifact_name, artifacts.*) are supplied by the pipeline
+  # orchestrator at runtime. Standalone runs of single scripts must pass them
+  # explicitly via Hydra overrides.
   target_neuron_count: 80
-  
+
   target_neurons: null
   bounds: [-6.0, 6.0]
   sampler: "cmaes"
   n_startup_trials: 100
   n_trials: 1000
-  
+
   objective_mode: "signed"
   direction: "maximize"
 
@@ -36,7 +34,7 @@ optimization:
   storage: null
 
   load_if_exists: true
-  
+
   fast_mode: false
   fast_n_pairs: 10
 

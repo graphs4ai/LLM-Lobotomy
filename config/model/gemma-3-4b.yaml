@@ -6,9 +6,6 @@ model:
   n_devices: 1  # Number of GPUs (increase if model doesn't fit on one GPU)
   dtype: "bfloat16"  # "float16" or "bfloat16"
 
-data:
-  activations_artifact_name: "ebouhid-unicamp/activation-stance-classifier/activations-anderson_cured-gemma-all:v0"
-
 extraction:
   batch_size: 8
   layers: "all"  # "all" or list like [14, 15, 16]
@@ -17,26 +14,23 @@ extraction:
 
 ipi_eval:
   use_chat_format: True
-  multiplier_artifact_name: "ebouhid-unicamp/activation-stance-classifier/gemma-3-4b-pi-optimization-minSignedPI:v0"
 
 optimization:
-  # Target neurons - use feature_artifact_name to load dynamically from SVM artifact
-  feature_artifact_name: "ebouhid-unicamp/activation-stance-classifier/svm-feature-ranking-activations-anderson_cured-gemma-all:latest"
   target_neuron_count: 80
-  
+
   target_neurons: null
   bounds: [-2.0, 2.0]
   sampler: "cmaes"
   n_startup_trials: 100
   n_trials: 3000
-  
+
   objective_mode: "signed"
   direction: null
 
   study_name: "gemma-3-4b-pi-optimization"
   storage: null
   load_if_exists: true
-  
+
   fast_mode: false
   fast_n_pairs: 10
 

@@ -1,5 +1,5 @@
 name: small_k_trials
-split_id: three_way_split_v1
+split_id: three_way_plus_holdout_v1
 seed: 42
 
 models:
@@ -21,8 +21,8 @@ trial_grid:
   "32": [2000, 3000]
 
 stages:
-  extract_activations: false
-  feature_selection: false
+  extract_activations: true
+  feature_selection: true
   optimization: true
   likert_baseline: true
   likert_intervened: true

@@ -6,7 +6,7 @@ model:
   dtype: "bfloat16"  # Recommended for phi-3
 
 data:
-  activations_artifact_name: "ebouhid-unicamp/activation-stance-classifier/activations-anderson_cured-Phi-3-mini-4k-instruct-all:v0"
+  activations_artifact_name: "ebouhid-unicamp/LLM-Lobotomy/activations-anderson_cured-Phi-3-mini-4k-instruct-all:v0"
 
 extraction:
   batch_size: 8
@@ -16,12 +16,12 @@ extraction:
 
 
 ipi_eval:
-  multiplier_artifact_name: "ebouhid-unicamp/activation-stance-classifier/Phi-3-mini-4k-instruct_signed_minimize_multipliers:latest"
+  multiplier_artifact_name: "ebouhid-unicamp/LLM-Lobotomy/Phi-3-mini-4k-instruct_signed_minimize_multipliers:latest"
   use_chat_format: True
 
 optimization:
   # Target neurons - use feature_artifact_name to load dynamically from SVM artifact
-  feature_artifact_name: "ebouhid-unicamp/activation-stance-classifier/svm-feature-ranking-activations-anderson_cured-Phi-3-mini-4k-instruct-all:v0"
+  feature_artifact_name: "ebouhid-unicamp/LLM-Lobotomy/svm-feature-ranking-activations-anderson_cured-Phi-3-mini-4k-instruct-all:v0"
   target_neuron_count: 80
 
   target_neurons: null

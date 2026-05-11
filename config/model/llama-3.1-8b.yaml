@@ -6,7 +6,7 @@ model:
   dtype: "float16"  # "float16" or "bfloat16"
 
 data:
-  activations_artifact_name: "ebouhid-unicamp/activation-stance-classifier/activations-split_FS-Llama-3.1-8B-Instruct-all:v0"
+  activations_artifact_name: "ebouhid-unicamp/LLM-Lobotomy/activations-split_FS-Llama-3.1-8B-Instruct-all:v0"
 
 extraction:
   batch_size: 8
@@ -16,12 +16,12 @@ extraction:
 
 ipi_eval:
   use_chat_format: True
-  multiplier_artifact_name: "ebouhid-unicamp/activation-stance-classifier/Llama-3.1-8B-Instruct_signed_minimize_multipliers:latest"
+  multiplier_artifact_name: "ebouhid-unicamp/LLM-Lobotomy/Llama-3.1-8B-Instruct_signed_minimize_multipliers:latest"
 
 optimization:
   # Target neurons - use feature_artifact_name to load dynamically from SVM artifact
   # Or specify manually below
-  feature_artifact_name: "ebouhid-unicamp/activation-stance-classifier/svm-feature-ranking-activations-split_FS-Llama-3.1-8B-Instruct-all:v0"
+  feature_artifact_name: "ebouhid-unicamp/LLM-Lobotomy/svm-feature-ranking-activations-split_FS-Llama-3.1-8B-Instruct-all:v0"
   target_neuron_count: 80  # Number of neurons to select from artifact
   
   target_neurons: null
