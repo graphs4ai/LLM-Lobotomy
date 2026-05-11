@@ -825,7 +825,10 @@ def main(cfg: DictConfig):
         if wandb_images:
             wandb.log(wandb_images)
 
-        # Log comparison metrics
+        # Log comparison metrics.
+        # `multiplier_artifact_name` is mirrored into the run summary so the
+        # backfill helper can match this Likert run back to its source
+        # multipliers artifact even if W&B config-path indexing changes.
         wandb.summary.update({
             'baseline_pi': baseline_metrics['model_polarization_index'],
             'intervention_pi': intervention_metrics['model_polarization_index'],
@@ -836,11 +839,19 @@ def main(cfg: DictConfig):
             'test_statistic': viz_results.get('question_level_stats', {}).get('test_statistic'),
             'test_type': viz_results.get('question_level_stats', {}).get('test_type'),
             'n_multipliers': len(activation_multipliers),
+            'multiplier_artifact_name': multiplier_artifact_name,
         })
 
-        # Create and log comparison artifact
+        # Create and log comparison artifact.
+        # Artifact name honors `artifacts.likert_intervened_name` so the
+        # pipeline orchestrator's deterministic identity threads end-to-end;
+        # falls back to the legacy hardcoded name for ad-hoc/manual runs.
+        artifacts_cfg = cfg.get("artifacts", {}) or {}
+        intervened_artifact_name = (
+            artifacts_cfg.get("likert_intervened_name") or "likert-comparison-results"
+        )
         comparison_artifact = wandb.Artifact(
-            name="likert-comparison-results",
+            name=intervened_artifact_name,
             type="evaluation-comparison",
             description="Baseline vs Intervention Likert evaluation comparison",
             metadata={
@@ -849,6 +860,7 @@ def main(cfg: DictConfig):
                 'pi_shift': pi_shift,
                 'test_pvalue': viz_results.get('question_level_stats', {}).get('test_pvalue'),
                 'test_type': viz_results.get('question_level_stats', {}).get('test_type'),
+                'multiplier_artifact_name': multiplier_artifact_name,
             }
         )
 
@@ -866,7 +878,7 @@ def main(cfg: DictConfig):
                 comparison_artifact.add_file(path)
 
         wandb.log_artifact(comparison_artifact)
-        print(f"\nComparison artifact logged to W&B: likert-comparison-results")
+        print(f"\nComparison artifact logged to W&B: {intervened_artifact_name}")
 
         # Set return values for the function
         results_df = intervention_results_df
@@ -944,8 +956,14 @@ def main(cfg: DictConfig):
         print(f"  Pairs: {saved_files['pairs_csv']}")
         print(f"  Metrics: {saved_files['metrics_json']}")
 
-        # Log baseline artifact
-        artifact_name = "likert-baseline-results"
+        # Log baseline artifact.
+        # Artifact name honors `artifacts.likert_baseline_name` so the
+        # pipeline orchestrator's deterministic identity threads end-to-end;
+        # falls back to the legacy hardcoded name for ad-hoc/manual runs.
+        artifacts_cfg = cfg.get("artifacts", {}) or {}
+        artifact_name = (
+            artifacts_cfg.get("likert_baseline_name") or "likert-baseline-results"
+        )
         likert_artifact = wandb.Artifact(
             name=artifact_name,
             type="evaluation-data",

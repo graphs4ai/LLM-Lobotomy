@@ -981,6 +981,46 @@ Validation commands:
 
 ---
 
+### Stage 11.5 — Manifest metric persistence + W&B backfill
+
+Goal: ensure executed pipeline jobs persist their metrics into the local manifest, and provide a standalone backfill path that reconstructs already-completed manifests from W&B without rerunning heavy stages.
+
+Bug:
+
+- `src/run_pipeline.py` wrote manifests with `metrics = _null_metrics()` at plan time and never updated them after `_execute_job_commands` flipped the status to `completed`. All metric keys stayed `null` on disk even though W&B held the correct values.
+- `src/likert_scale_test.py` hardcoded `"likert-baseline-results"` and `"likert-comparison-results"` for its W&B artifacts, ignoring `cfg.artifacts.likert_baseline_name` and `cfg.artifacts.likert_intervened_name` set by the pipeline orchestrator. The manifest's `artifacts.likert_*` references therefore did not exist in W&B.
+
+Tasks:
+
+- [x] Add `src/utils/metrics_backfill.py` exposing `NULL_METRICS`, `MetricsBackfillError`, `metrics_are_complete`, and `collect_run_metrics(manifest, project, entity=None)`.
+ - Soft optimization/validation metrics are read from the multipliers W&B artifact metadata (deterministic name).
+ - Discrete IPI / Wilcoxon metrics are read from the intervened Likert W&B run located via `config.multiplier_artifact_name` / `config.ipi_eval.multiplier_artifact_name`, picking the newest match.
+- [x] Update `src/run_pipeline.py` so `_execute_job_commands` calls `collect_run_metrics` after a successful execution and merges the result into the completed manifest. Failures during write-back log a warning and leave nulls in place but do not fail the run.
+- [x] Add `src/backfill_manifests.py` standalone CLI (`--project`, `--entity`, `--dry-run`, `--force`, `--run-id <glob>`, `--pipeline-dir`). Walks `runs/pipeline/*/manifest.json`, reuses `collect_run_metrics`, and rewrites manifests in place. By default skips non-completed and already-complete manifests; `--force` overrides.
+- [x] Update `src/likert_scale_test.py` to honor `cfg.artifacts.likert_baseline_name` and `cfg.artifacts.likert_intervened_name` (fallback to legacy hardcoded names). Mirror `multiplier_artifact_name` into `wandb.summary` so backfill's run filter has a stable indexable surface.
+
+Validation commands (operator-run):
+
+```bash
+python src/backfill_manifests.py --project LLM-Lobotomy --dry-run
+python src/backfill_manifests.py --project LLM-Lobotomy
+python src/summarize_sweep.py
+```
+
+Status notes:
+
+```text
+Completed on 2026-05-11.
+
+Implementation notes:
+- collect_run_metrics returns a 10-key dict aligned with the manifest schema; None for unresolved values.
+- The W&B artifact lookup normalizes bare names to `[entity/]project/name:alias` automatically.
+- The pipeline runtime write-back is best-effort: a W&B fetch failure prints a warning and the manifest stays nullable, so the operator can rerun the backfill script later.
+- Likert artifact-name fix is backward-compatible: scripts invoked without `artifacts.*` overrides keep the legacy `likert-baseline-results` / `likert-comparison-results` names.
+```
+
+---
+
 ### Stage 12 — Sweep summary generation
 
 Goal: generate CSV and Markdown summaries from local manifests.
@@ -1264,6 +1304,11 @@ Record implementation decisions here.
 
 | Date | Decision | Rationale | Files affected |
 |---|---|---|---|
+| 2026-05-11 | Persist manifest metrics by reading W&B after job execution and via a standalone backfill script | Closes the gap where executed jobs left manifest metrics null even though W&B had the values; matches the stated dual-persistence decision (manifest + W&B) | src/run_pipeline.py, src/utils/metrics_backfill.py, src/backfill_manifests.py |
+| 2026-05-11 | Use the multipliers W&B artifact metadata as the canonical source for soft optimization/validation metrics during backfill | The multipliers artifact name is deterministic and respected by `optimize_intervention.py`, so it maps 1:1 to a manifest without ambiguity | src/utils/metrics_backfill.py |
+| 2026-05-11 | Match intervened Likert W&B runs by `config.multiplier_artifact_name` (with `summary.multiplier_artifact_name` as a mirrored fallback) | Likert artifacts are generic/hardcoded historically; matching on the multipliers reference is the only deterministic per-job key available across past runs | src/utils/metrics_backfill.py, src/likert_scale_test.py |
+| 2026-05-11 | Make runtime metric write-back best-effort (warn on failure, never mark the run failed) | The heavy work is already done — a transient W&B query failure should not flip an otherwise valid run, and the standalone backfill script can recover later | src/run_pipeline.py |
+| 2026-05-11 | Honor `artifacts.likert_baseline_name` and `artifacts.likert_intervened_name` in likert_scale_test.py, with backward-compatible fallback | Makes the orchestrator's deterministic identity thread end-to-end for Likert outputs while preserving ad-hoc usage | src/likert_scale_test.py |
 | 2026-05-08 | Keep summary generation fully local in first pass (manifest-only) | Avoids extra network coupling and makes sweep recap reproducible from workspace state alone | src/summarize_sweep.py |
 | 2026-05-08 | Report soft metrics on both optimization and validation splits for baseline/intervened | Distinguishes optimization failure from overfitting and supports soft/discrete mismatch diagnosis | src/optimize_intervention.py, config/config.yaml |
 | 2026-05-08 | Baseline Likert scheduling is keyed by model/split/eval settings | Prevents redundant baseline evaluations while preserving explicit per-job baseline artifact references | src/run_pipeline.py |
@@ -1305,7 +1350,7 @@ Track unresolved questions here.
 ## Last Successful Command
 
 ```bash
-python src/summarize_sweep.py
+python -m py_compile src/run_pipeline.py src/backfill_manifests.py src/utils/metrics_backfill.py src/likert_scale_test.py
 ```
 
 ---
@@ -1324,6 +1369,6 @@ Fixed keys/call signatures and revalidated dry-run/resume/force behavior.
 
 ```text
 Status: in progress
-Current stage: Post-stage implementation review
-Next action: run acceptance command set and decide whether to commit stage-12 deliverables.
+Current stage: Stage 11.5 — manifest metric persistence + backfill landed.
+Next action: operator runs `python src/backfill_manifests.py --project LLM-Lobotomy --dry-run` against existing runs/pipeline manifests, then drops --dry-run, then reruns src/summarize_sweep.py to confirm populated metric columns.
 ```

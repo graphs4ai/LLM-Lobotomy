@@ -16,21 +16,15 @@ from utils.experiment_ids import (
     make_multiplier_artifact_name,
     make_run_id,
 )
+from utils.metrics_backfill import (
+    NULL_METRICS,
+    MetricsBackfillError,
+    collect_run_metrics,
+)
 
 
 def _null_metrics() -> dict[str, Any]:
-    return {
-        "soft_ipi_optimization_baseline": None,
-        "soft_ipi_optimization_intervened": None,
-        "delta_soft_ipi_optimization": None,
-        "soft_ipi_validation_baseline": None,
-        "soft_ipi_validation_intervened": None,
-        "delta_soft_ipi_validation": None,
-        "discrete_ipi_test_baseline": None,
-        "discrete_ipi_test_intervened": None,
-        "delta_discrete_ipi_test": None,
-        "wilcoxon_p_value": None,
-    }
+    return dict(NULL_METRICS)
 
 
 def _trial_values_for_k(trial_grid: dict[str, Any], top_k: int) -> list[int]:
@@ -47,29 +41,69 @@ def _build_commands(
     n_trials: int,
     stages: DictConfig,
     include_baseline_likert: bool,
+    artifact_names: dict[str, str],
 ) -> list[str]:
+    """
+    Compose stage commands with explicit Hydra overrides for every artifact
+    identity. The orchestrator owns the deterministic name for each stage's
+    output and threads it as the input of the next stage, so no script ever
+    needs to guess (and stale defaults in config/model/*.yaml cannot leak in).
+
+    `artifact_names` keys: activations, feature_ranking, multipliers,
+    likert_baseline, likert_intervened. Values are bare names (no
+    entity/project prefix) — wandb resolves them in the active run's project.
+    """
+    activations_name = artifact_names["activations"]
+    feature_ranking_name = artifact_names["feature_ranking"]
+    multipliers_name = artifact_names["multipliers"]
+    likert_baseline_name = artifact_names["likert_baseline"]
+    likert_intervened_name = artifact_names["likert_intervened"]
+
+    activations_ref = f"{activations_name}:latest"
+    feature_ranking_ref = f"{feature_ranking_name}:latest"
+    multipliers_ref = f"{multipliers_name}:latest"
+
     cmds: list[str] = []
     if stages.get("extract_activations", False):
-        cmds.append(f"python src/extract_activations.py model={model_cfg_name}")
+        cmds.append(
+            "python src/extract_activations.py "
+            f"model={model_cfg_name} "
+            f"artifacts.activations_name={activations_name}"
+        )
     if stages.get("feature_selection", False):
-        cmds.append(f"python src/train_eval_svc.py model={model_cfg_name}")
+        cmds.append(
+            "python src/train_eval_svc.py "
+            f"model={model_cfg_name} "
+            f"data.activations_artifact_name={activations_ref} "
+            f"artifacts.feature_ranking_name={feature_ranking_name}"
+        )
     if stages.get("optimization", False):
         cmds.append(
             "python src/optimize_intervention.py "
-            f"model={model_cfg_name} optimization.direction={direction} "
-            f"optimization.top_k={top_k} optimization.n_trials={n_trials}"
+            f"model={model_cfg_name} "
+            f"optimization.direction={direction} "
+            f"optimization.top_k={top_k} "
+            f"optimization.n_trials={n_trials} "
+            f"optimization.feature_artifact_name={feature_ranking_ref} "
+            f"artifacts.multiplier_name={multipliers_name}"
         )
     if stages.get("likert_baseline", False) and include_baseline_likert:
+        # Baseline must NOT load a multiplier artifact; null wins over any
+        # leftover model-config default.
         cmds.append(
             "python src/likert_scale_test.py "
-            f"model={model_cfg_name} likert.condition=baseline"
+            f"model={model_cfg_name} likert.condition=baseline "
+            "ipi_eval.multiplier_artifact_name=null "
+            f"artifacts.likert_baseline_name={likert_baseline_name}"
         )
     if stages.get("likert_intervened", False):
         cmds.append(
             "python src/likert_scale_test.py "
             f"model={model_cfg_name} likert.condition=intervened "
             f"optimization.direction={direction} optimization.top_k={top_k} "
-            f"optimization.n_trials={n_trials}"
+            f"optimization.n_trials={n_trials} "
+            f"ipi_eval.multiplier_artifact_name={multipliers_ref} "
+            f"artifacts.likert_intervened_name={likert_intervened_name}"
         )
     if stages.get("poeta", False):
         cmds.append(f"python src/poeta_evaluator.py model={model_cfg_name}")
@@ -110,6 +144,8 @@ def _execute_job_commands(
     working_directory: Path,
     manifest_path: Path,
     manifest: dict[str, Any],
+    wandb_project: str | None,
+    wandb_entity: str | None,
 ) -> None:
     running_manifest = dict(manifest)
     running_manifest["status"] = "running"
@@ -127,7 +163,64 @@ def _execute_job_commands(
     completed_manifest = dict(running_manifest)
     completed_manifest["status"] = "completed"
     completed_manifest["error"] = None
+
+    completed_manifest["metrics"] = _resolve_completion_metrics(
+        manifest=running_manifest,
+        wandb_project=wandb_project,
+        wandb_entity=wandb_entity,
+        existing_metrics=running_manifest.get("metrics"),
+    )
+
     _write_manifest(manifest_path, completed_manifest)
+
+
+def _resolve_completion_metrics(
+    manifest: dict[str, Any],
+    wandb_project: str | None,
+    wandb_entity: str | None,
+    existing_metrics: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """
+    Best-effort metric write-back after a successful execution.
+
+    Failures here must not mark the run as failed: the heavy work already
+    succeeded and the metric values can be reconstructed later via
+    `src/backfill_manifests.py`. We log a warning, fall back to the existing
+    metrics block (or nulls), and let the caller persist the manifest as
+    `completed`.
+    """
+    base = dict(_null_metrics())
+    if existing_metrics:
+        for key in base:
+            if existing_metrics.get(key) is not None:
+                base[key] = existing_metrics[key]
+
+    if not wandb_project:
+        print(
+            "  metrics: skipped write-back (wandb.project not configured); "
+            "run src/backfill_manifests.py later to fill the manifest."
+        )
+        return base
+
+    try:
+        fetched = collect_run_metrics(
+            manifest=manifest,
+            project=wandb_project,
+            entity=wandb_entity,
+        )
+    except MetricsBackfillError as exc:
+        print(f"  metrics: write-back failed ({exc}); manifest left with nulls.")
+        return base
+    except Exception as exc:
+        print(f"  metrics: unexpected write-back error ({exc}); manifest left with nulls.")
+        return base
+
+    for key, value in fetched.items():
+        if value is not None:
+            base[key] = value
+
+    print("  metrics: written back from W&B")
+    return base
 
 
 def _baseline_reuse_key(
@@ -173,6 +266,10 @@ def main(cfg: DictConfig) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     dry_run = bool(cfg.pipeline.get("dry_run", True))
     project_root = Path(hydra.utils.get_original_cwd())
+
+    wandb_cfg = cfg.get("wandb", {}) or {}
+    wandb_project = wandb_cfg.get("project")
+    wandb_entity = wandb_cfg.get("entity")
 
     print("=" * 70)
     print(f"PIPELINE PLAN: {experiment.name}")
@@ -226,19 +323,21 @@ def main(cfg: DictConfig) -> None:
                         continue
 
                     try:
-                        artifacts = {
+                        # Bare artifact names (no `:alias` suffix). Used both
+                        # as outputs (passed to scripts via artifacts.*) and,
+                        # with `:latest` appended, as inputs to downstream
+                        # stages.
+                        artifact_names = {
                             "activations": make_activation_artifact_name(
                                 model_name=model_cfg_name,
                                 split_id=split_id,
                                 layers=layers,
-                            )
-                            + ":latest",
+                            ),
                             "feature_ranking": make_feature_ranking_artifact_name(
                                 model_name=model_cfg_name,
                                 split_id=split_id,
                                 ranking_top_n=ranking_top_n,
-                            )
-                            + ":latest",
+                            ),
                             "multipliers": make_multiplier_artifact_name(
                                 model_name=model_cfg_name,
                                 split_id=split_id,
@@ -246,15 +345,13 @@ def main(cfg: DictConfig) -> None:
                                 top_k=top_k,
                                 n_trials=n_trials,
                                 seed=seed,
-                            )
-                            + ":latest",
+                            ),
                             "likert_baseline": make_likert_artifact_name(
                                 model_name=model_cfg_name,
                                 split_id=split_id,
                                 condition="baseline",
                                 seed=seed,
-                            )
-                            + ":latest",
+                            ),
                             "likert_intervened": make_likert_artifact_name(
                                 model_name=model_cfg_name,
                                 split_id=split_id,
@@ -263,9 +360,9 @@ def main(cfg: DictConfig) -> None:
                                 direction=direction,
                                 top_k=top_k,
                                 n_trials=n_trials,
-                            )
-                            + ":latest",
+                            ),
                         }
+                        artifacts = {k: f"{v}:latest" for k, v in artifact_names.items()}
                         commands = _build_commands(
                             model_cfg_name=model_cfg_name,
                             direction=direction,
@@ -273,6 +370,7 @@ def main(cfg: DictConfig) -> None:
                             n_trials=n_trials,
                             stages=experiment.stages,
                             include_baseline_likert=include_baseline_likert,
+                            artifact_names=artifact_names,
                         )
                         manifest = {
                             "run_id": run_id,
@@ -308,6 +406,8 @@ def main(cfg: DictConfig) -> None:
                                 working_directory=project_root,
                                 manifest_path=manifest_path,
                                 manifest=manifest,
+                                wandb_project=wandb_project,
+                                wandb_entity=wandb_entity,
                             )
                             print("  execution: completed")
                     except Exception as exc:
