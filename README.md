@@ -118,7 +118,7 @@ Each model has a **unified config** (`llama-3.1-8b.yaml`, `gemma-3-4b.yaml`, `ge
 ```bash
 # 1. Extract activations from your dataset
 python src/extract_activations.py --config-name llama-3.1-8b \
-  data.feature_selection_statements="/path/to/political_texts.csv" \
+  data.feature_selection_dataset="/path/to/political_texts.csv" \
   extraction.layers="all"
 
 # 2. Train SVM and identify politically-relevant neurons
@@ -159,7 +159,7 @@ python src/optimize_intervention.py --config-name llama-3.1-8b \
 
 # Change dataset
 python src/extract_activations.py --config-name llama-3.1-8b \
-  data.feature_selection_statements="/path/to/different_data.csv"
+  data.feature_selection_dataset="/path/to/different_data.csv"
 ```
 
 ### Config Files
@@ -173,6 +173,171 @@ python src/extract_activations.py --config-name llama-3.1-8b \
 | `<model>-baseline.yaml` | PoETa baseline variant config (no intervention) |
 | `<model>-maximize.yaml` | PoETa maximization intervention variant config |
 | `<model>-minimize.yaml` | PoETa minimization intervention variant config |
+
+## Experiment Management System (Hydra + Manifests + Summaries)
+
+The project now includes a local experiment management layer for sweep-style runs across model, direction, `top_k`, and `n_trials`, while preserving the existing script entrypoints.
+
+### Why this exists
+
+Historically, the pipeline stages were runnable individually, but artifact handoffs and sweep tracking required manual coordination. The current system adds:
+
+- deterministic run/artifact IDs,
+- local manifest files per planned job,
+- resumable planning/execution semantics,
+- de-duplicated baseline scheduling,
+- local sweep summaries (`summary.csv` and `summary.md`).
+
+This is implemented without introducing an external workflow engine.
+
+### Core components
+
+- `src/utils/experiment_ids.py`  
+  Deterministic naming for run IDs and artifact names.
+- `src/utils/wandb_artifacts.py`  
+  Centralized W&B artifact resolve/log/metadata validation helpers.
+- `config/experiment/k80_trials.yaml` and `config/experiment/small_k_trials.yaml`  
+  Sweep matrices defining model list, directions, `feature_counts`, `trial_grid`, and enabled stages.
+- `src/run_pipeline.py`  
+  Planner/executor that expands the matrix and writes/updates manifests.
+- `src/summarize_sweep.py`  
+  Aggregates manifests into `runs/pipeline/summary.csv` and `runs/pipeline/summary.md`.
+
+### Command model and config composition
+
+Use Hydra composition with `experiment=<name>` and `model=<name>`:
+
+```bash
+# Inspect merged config only (no execution)
+python src/run_pipeline.py experiment=small_k_trials model=gemma-3-4b --cfg job
+
+# Plan jobs and write manifests (safe default)
+python src/run_pipeline.py experiment=small_k_trials model=gemma-3-4b pipeline.resume=true
+
+# Execute commands (only after inspecting dry-run behavior)
+python src/run_pipeline.py experiment=small_k_trials model=gemma-3-4b \
+  pipeline.dry_run=false pipeline.resume=true
+```
+
+### Manifest as source of truth
+
+Each planned job is stored at:
+
+```text
+runs/pipeline/{run_id}/manifest.json
+```
+
+Each manifest stores:
+
+- run identity (`run_id`, `model_name`, `split_id`, `direction`, `top_k`, `n_trials`, `seed`),
+- planned stage commands,
+- deterministic artifact references,
+- metrics placeholders/results,
+- status and error message.
+
+Status lifecycle:
+
+```text
+planned -> running -> completed
+planned/running -> failed
+completed -> skipped (on resume/skip_existing policy)
+```
+
+### Resume, skip, and force semantics
+
+`run_pipeline.py` checks existing manifest status before scheduling/executing:
+
+- `pipeline.resume=true`  
+  skip jobs already marked `completed`.
+- `pipeline.skip_existing=true`  
+  same completed-job skip behavior (even if `resume` is false).
+- `pipeline.force=true`  
+  overrides skip behavior and replans/reruns regardless of previous status.
+
+Rule of thumb:
+
+- use `resume=true` to continue interrupted sweeps,
+- use `force=true` to intentionally rerun completed jobs.
+
+### Baseline Likert reuse (important for sweep efficiency)
+
+For sweeps where many `top_k`/`n_trials` combinations share the same baseline evaluation context, baseline Likert is scheduled once per unique baseline key and reused for the remaining jobs.
+
+Baseline reuse key includes:
+
+- `model`,
+- `split_id`,
+- `ipi_test_dataset`,
+- `likert.prompt_template_version`,
+- `likert.parser_version`,
+- `likert.temperature`,
+- `likert.decoding_strategy`,
+- `seed`.
+
+Intervened Likert remains per concrete multiplier job (`direction`, `top_k`, `n_trials`).
+
+### Stage flags in experiment config
+
+Each experiment config has:
+
+```yaml
+stages:
+  extract_activations: true|false
+  feature_selection: true|false
+  optimization: true|false
+  likert_baseline: true|false
+  likert_intervened: true|false
+  poeta: true|false
+```
+
+This allows partial runs (for example, skip extraction/feature selection when artifacts already exist).
+
+### Deterministic naming
+
+Run and artifact IDs are generated from stable inputs to make runs reproducible and searchable:
+
+- run ID:  
+  `{model}__{split_id}__{direction}__k{top_k}__trials{n_trials}__seed{seed}`
+- artifacts:
+  - `activations-{model}-{split_id}-{layers}`
+  - `feature-ranking-{model}-{split_id}-top{ranking_top_n}`
+  - `multipliers-{model}-{split_id}-{direction}-k{top_k}-trials{n_trials}-seed{seed}`
+  - `likert-baseline-{model}-{split_id}-seed{seed}`
+  - `likert-intervened-{model}-{split_id}-{direction}-k{top_k}-trials{n_trials}-seed{seed}`
+
+### Optimization/validation soft metrics
+
+`optimize_intervention.py` now reports soft metrics on both splits:
+
+- optimization baseline/intervened and delta,
+- validation baseline/intervened and delta.
+
+These are persisted to:
+
+- W&B summary,
+- optimization artifact metadata,
+- local optimization results JSON (`soft_metrics` field).
+
+This is useful to diagnose:
+
+- optimization failure,
+- overfitting to optimization split,
+- soft/discrete mismatch.
+
+### Sweep summary generation
+
+After planning/executing jobs, generate sweep summaries locally:
+
+```bash
+python src/summarize_sweep.py
+```
+
+Outputs:
+
+- `runs/pipeline/summary.csv`
+- `runs/pipeline/summary.md`
+
+Both include completed, skipped, and failed jobs (manifest-driven; no W&B dependency required for first-pass summarization).
 
 ### PoETa Variant Workflow
 
