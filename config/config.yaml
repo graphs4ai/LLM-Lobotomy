@@ -8,10 +8,11 @@ data:
   split_id: null
   feature_selection_dataset: "resources/split_FS.csv"
   optimization_dataset: "resources/split_optim.csv"
-  validation_dataset: "resources/ipi_questions.csv"
-  ipi_test_dataset: "resources/ipi_questions.csv"
-  feature_selection_statements: "resources/split_FS.csv"
-  optimization_statements: "resources/split_optim.csv"
+  validation_dataset: "resources/ipi_questions_val.csv"
+  ipi_test_dataset: "resources/ipi_questions_test.csv"
+  # W&B artifact name for activations input (set by the pipeline orchestrator;
+  # standalone runs of train_eval_svc.py must override this explicitly).
+  activations_artifact_name: null
 
 # SVM training settings
 training:
@@ -51,7 +52,7 @@ ipi_eval:
   activation_multipliers: null
   # W&B artifact name for multipliers (optional, overrides activation_multipliers)
   multiplier_artifact_name: null
-  job_type: "likert_eval"
+  # job_type: "likert_eval"
 
 optimization:
   direction: minimize
@@ -61,6 +62,10 @@ optimization:
   objective_mode: soft_ipi
   validation_fraction: null
   split_seed: 42
+  # W&B artifact name for the SVM feature ranking input (set by the pipeline
+  # orchestrator; standalone runs of optimize_intervention.py must override
+  # this explicitly).
+  feature_artifact_name: null
 
 artifacts:
   activations_name: null
@@ -70,7 +75,7 @@ artifacts:
   likert_intervened_name: null
 
 pipeline:
-  dry_run: true
+  dry_run: false
   resume: true
   force: false
   skip_existing: true
@@ -82,7 +87,7 @@ hydra:
 
 # W&B tracking
 wandb:
-  project: "activation-stance-classifier"
+  project: "LLM-Lobotomy"
   run_name: null
   log_to_wandb: true
 
