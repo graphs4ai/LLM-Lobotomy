@@ -3,6 +3,13 @@ import torch.nn.functional as F
 from transformer_lens import HookedTransformer
 from typing import List, Union, Optional, Dict, Tuple
 
+from utils.intervention_hooks import (
+    DEFAULT_LAST_K,
+    DEFAULT_SCOPE,
+    assert_scope,
+    make_intervention_hook,
+)
+
 
 class Llama3dot1Wrapper:
     """
@@ -174,38 +181,42 @@ class Llama3dot1Wrapper:
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
         verbose: bool = False,
+        intervention_scope: str = DEFAULT_SCOPE,
+        last_k: int = DEFAULT_LAST_K,
+        debug_seq_lens: Optional[List[int]] = None,
         **generate_kwargs
     ) -> torch.Tensor:
         """
         Generates text with optional activation interventions applied during the forward pass.
 
-        This allows modifying the model's internal representations during generation,
-        which can be used to study how activation magnitudes affect model behavior.
+        Which positions are modified is controlled by `intervention_scope`
+        (see `src/utils/intervention_hooks.py` for the full set). Default
+        `prompt_without_buffer` preserves the legacy `buffer_size = 3` behavior.
 
         Args:
-            input_ids (torch.Tensor): Input token IDs, shape [batch, seq_len].
-            activation_multipliers (Optional[Dict[str, float]]): Dictionary mapping neuron identifiers
-                                                                  (format: 'layer_{L}-neuron_{N}') to
-                                                                  multiplier values. Specific neurons
-                                                                  will be scaled by the given factor.
-                                                                  Example: {'layer_10-neuron_512': 0.5}
-            max_new_tokens (int): Maximum number of tokens to generate.
-            temperature (Optional[float]): Sampling temperature. If None, greedy decoding is used.
-            do_sample (bool): Whether to use sampling instead of greedy decoding.
-            stop_at_eos (bool): Whether to stop generation at EOS token.
-            eos_token_id (Optional[int]): EOS token ID to stop at. If None, uses tokenizer default.
-            verbose (bool): Whether to show generation progress.
+            input_ids: Input token IDs, shape [batch, seq_len].
+            activation_multipliers: Dictionary mapping neuron identifiers
+                (format: 'layer_{L}-neuron_{N}') to multiplier values.
+            max_new_tokens: Maximum number of tokens to generate.
+            temperature: Sampling temperature. If None, greedy decoding is used.
+            do_sample: Whether to use sampling instead of greedy decoding.
+            stop_at_eos: Whether to stop generation at EOS token.
+            eos_token_id: EOS token ID to stop at. If None, uses tokenizer default.
+            verbose: Whether to show generation progress.
+            intervention_scope: which token positions receive the multiplier.
+            last_k: trailing-prompt window for scopes that use it.
+            debug_seq_lens: optional list; when provided, observed `resid_pre`
+                seq lengths (up to 20) are appended so the caller can inspect
+                whether generation uses full recompute or cached decoding.
             **generate_kwargs: Additional arguments passed to model.generate().
 
         Returns:
             torch.Tensor: Generated token IDs including the input tokens.
         """
-        # Use tokenizer's EOS token if not provided
         if eos_token_id is None:
             eos_token_id = self.model.tokenizer.eos_token_id
 
         if activation_multipliers is None or len(activation_multipliers) == 0:
-            # No intervention, use standard generation
             return self.model.generate(
                 input_ids.to(self.input_device),
                 max_new_tokens=max_new_tokens,
@@ -217,9 +228,9 @@ class Llama3dot1Wrapper:
                 **generate_kwargs
             )
 
-        # Parse neuron-wise multipliers into per-layer dictionaries
-        # Format: {'layer_10-neuron_512': 0.5} -> {10: {512: 0.5}}
-        layer_neuron_multipliers = {}
+        assert_scope(intervention_scope)
+
+        layer_neuron_multipliers: Dict[int, Dict[int, float]] = {}
         for feature_name, multiplier in activation_multipliers.items():
             parts = feature_name.split('-')
             layer_idx = int(parts[0].split('_')[1])
@@ -228,37 +239,22 @@ class Llama3dot1Wrapper:
                 layer_neuron_multipliers[layer_idx] = {}
             layer_neuron_multipliers[layer_idx][neuron_idx] = multiplier
 
-        # Create intervention hooks that ONLY modify prompt positions.
-        # During autoregressive generation, TransformerLens recomputes the full
-        # sequence at each step (no KV cache). If we modify ALL positions,
-        # generated tokens get their activations distorted on every subsequent
-        # step, compounding artifacts and producing nonsense.
-        # By restricting to prompt positions, the generated tokens' residual
-        # streams remain unmodified, and the steering effect propagates
-        # naturally through attention from the modified prompt.
-        buffer_size = 3
-        prompt_len = max(0, input_ids.shape[-1] - buffer_size)
+        input_len = int(input_ids.shape[-1])
+        fwd_hooks = [
+            (
+                f"blocks.{layer_idx}.hook_resid_pre",
+                make_intervention_hook(
+                    neuron_mults=neuron_mults,
+                    input_len=input_len,
+                    scope=intervention_scope,
+                    last_k=last_k,
+                    debug_seq_lens=debug_seq_lens,
+                ),
+            )
+            for layer_idx, neuron_mults in layer_neuron_multipliers.items()
+        ]
 
-        def make_intervention_hook(neuron_multipliers: Dict[int, float]):
-            def hook(resid_pre: torch.Tensor, hook):
-                modified = resid_pre.clone()
-                for neuron_idx, multiplier in neuron_multipliers.items():
-                    modified[:, :prompt_len, neuron_idx] = modified[
-                        :, :prompt_len, neuron_idx] * multiplier
-                return modified
-            return hook
-
-        fwd_hooks = []
-        for layer_idx, neuron_mults in layer_neuron_multipliers.items():
-            hook_point = f"blocks.{layer_idx}.hook_resid_pre"
-            fwd_hooks.append(
-                (hook_point, make_intervention_hook(neuron_mults)))
-
-        # Use run_with_hooks for generation with interventions
-        # Note: transformer_lens generate doesn't directly support hooks,
-        # so we need to use a workaround with add_hook
         with torch.no_grad():
-            # Temporarily add hooks
             for hook_point, hook_fn in fwd_hooks:
                 self.model.add_hook(hook_point, hook_fn)
 
@@ -274,7 +270,6 @@ class Llama3dot1Wrapper:
                     **generate_kwargs
                 )
             finally:
-                # Remove all hooks
                 self.model.reset_hooks()
 
         return output_ids
@@ -319,49 +314,47 @@ class Llama3dot1Wrapper:
         activation_multipliers: Optional[Dict[str, float]] = None,
         positive_token_id: Optional[int] = None,
         negative_token_id: Optional[int] = None,
-        language: str = "pt"
+        language: str = "pt",
+        intervention_scope: str = DEFAULT_SCOPE,
+        last_k: int = DEFAULT_LAST_K,
     ) -> Tuple[float, float]:
         """
-        Computes a continuous score [-1, 1] representing the probability gap 
+        Computes a continuous score [-1, 1] representing the probability gap
         between positive (Agree) and negative (Disagree) tokens at the last position.
 
         This uses a single forward pass (no generation) for efficient optimization.
+        Position scope of the intervention is controlled by `intervention_scope`
+        and `last_k`; see `src/utils/intervention_hooks.py`.
 
         Args:
             input_ids: Input token IDs, shape [batch, seq_len] or [seq_len]
             activation_multipliers: Optional dict mapping neuron identifiers
-                                    (format: 'layer_{L}-neuron_{N}') to multiplier values
+                (format: 'layer_{L}-neuron_{N}') to multiplier values
             positive_token_id: Token ID for positive stance word. If None, uses language default.
             negative_token_id: Token ID for negative stance word. If None, uses language default.
             language: Language code for default token IDs ("pt" or "en")
+            intervention_scope: which token positions receive the multiplier.
+            last_k: trailing-prompt window for scopes that use it.
 
         Returns:
-            Tuple of (score, prob_sum):
-                - score: Float in range [-1, 1]: prob(positive) - prob(negative)
-                         Positive values indicate agreement tendency, negative indicates disagreement.
-                - prob_sum: Float representing prob(positive) + prob(negative)
-                            Used to validate that the model is producing realistic Likert responses.
+            Tuple of (score, prob_sum).
         """
-        # Get default token IDs if not provided
         if positive_token_id is None or negative_token_id is None:
             pos_id, neg_id = self.get_stance_token_ids(language)
             positive_token_id = positive_token_id or pos_id
             negative_token_id = negative_token_id or neg_id
 
-        # Ensure input_ids has batch dimension
         if input_ids.dim() == 1:
             input_ids = input_ids.unsqueeze(0)
 
         input_ids = input_ids.to(self.input_device)
 
-        # Default to empty dict if no multipliers provided
         if activation_multipliers is None or len(activation_multipliers) == 0:
-            # No intervention - simple forward pass
             with torch.no_grad():
-                logits = self.model(input_ids)  # [batch, seq_len, vocab_size]
+                logits = self.model(input_ids)
         else:
-            # Parse neuron-wise multipliers into per-layer dictionaries
-            layer_neuron_multipliers = {}
+            assert_scope(intervention_scope)
+            layer_neuron_multipliers: Dict[int, Dict[int, float]] = {}
             for feature_name, multiplier in activation_multipliers.items():
                 parts = feature_name.split('-')
                 layer_idx = int(parts[0].split('_')[1])
@@ -370,34 +363,27 @@ class Llama3dot1Wrapper:
                     layer_neuron_multipliers[layer_idx] = {}
                 layer_neuron_multipliers[layer_idx][neuron_idx] = multiplier
 
-            # Create intervention hooks
-            def make_intervention_hook(neuron_multipliers: Dict[int, float]):
-                def hook(resid_pre: torch.Tensor, hook):
-                    modified = resid_pre.clone()
-                    for neuron_idx, multiplier in neuron_multipliers.items():
-                        modified[:, :, neuron_idx] = modified[:,
-                                                              :, neuron_idx] * multiplier
-                    return modified
-                return hook
+            input_len = int(input_ids.shape[1])
+            fwd_hooks = [
+                (
+                    f"blocks.{layer_idx}.hook_resid_pre",
+                    make_intervention_hook(
+                        neuron_mults=neuron_mults,
+                        input_len=input_len,
+                        scope=intervention_scope,
+                        last_k=last_k,
+                    ),
+                )
+                for layer_idx, neuron_mults in layer_neuron_multipliers.items()
+            ]
 
-            fwd_hooks = []
-            for layer_idx, neuron_mults in layer_neuron_multipliers.items():
-                hook_point = f"blocks.{layer_idx}.hook_resid_pre"
-                fwd_hooks.append(
-                    (hook_point, make_intervention_hook(neuron_mults)))
-
-            # Forward pass with hooks
             with torch.no_grad():
                 logits = self.model.run_with_hooks(
                     input_ids, fwd_hooks=fwd_hooks)
 
-        # Extract logits for the FINAL token position
-        last_token_logits = logits[0, -1, :]  # [vocab_size]
-
-        # Apply softmax to get probabilities
+        last_token_logits = logits[0, -1, :]
         probs = F.softmax(last_token_logits, dim=-1)
 
-        # Compute probability difference and sum
         prob_positive = probs[positive_token_id].item()
         prob_negative = probs[negative_token_id].item()
 

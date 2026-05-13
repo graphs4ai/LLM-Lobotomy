@@ -3,6 +3,13 @@ import torch.nn.functional as F
 from transformer_lens import HookedTransformer
 from typing import List, Union, Optional, Dict, Tuple
 
+from utils.intervention_hooks import (
+    DEFAULT_LAST_K,
+    DEFAULT_SCOPE,
+    assert_scope,
+    make_intervention_hook,
+)
+
 
 class Mistral7BWrapper:
     """
@@ -130,6 +137,9 @@ class Mistral7BWrapper:
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
         verbose: bool = False,
+        intervention_scope: str = DEFAULT_SCOPE,
+        last_k: int = DEFAULT_LAST_K,
+        debug_seq_lens: Optional[List[int]] = None,
         **generate_kwargs,
     ) -> torch.Tensor:
 
@@ -148,7 +158,8 @@ class Mistral7BWrapper:
                 **generate_kwargs,
             )
 
-        # Parse multipliers
+        assert_scope(intervention_scope)
+
         layer_neuron_multipliers: Dict[int, Dict[int, float]] = {}
         for name, mult in activation_multipliers.items():
             parts = name.split("-")
@@ -156,20 +167,20 @@ class Mistral7BWrapper:
             neuron = int(parts[1].split("_")[1])
             layer_neuron_multipliers.setdefault(layer, {})[neuron] = mult
 
-        buffer_size = 3
-        prompt_len = max(0, input_ids.shape[-1] - buffer_size)
-
-        def make_hook(neuron_mults: Dict[int, float]):
-            def hook(resid_pre: torch.Tensor, hook):
-                modified = resid_pre.clone()
-                for n, m in neuron_mults.items():
-                    modified[:, :prompt_len, n] *= m
-                return modified
-            return hook
-
-        hooks = []
-        for layer, mults in layer_neuron_multipliers.items():
-            hooks.append((f"blocks.{layer}.hook_resid_pre", make_hook(mults)))
+        input_len = int(input_ids.shape[-1])
+        hooks = [
+            (
+                f"blocks.{layer}.hook_resid_pre",
+                make_intervention_hook(
+                    neuron_mults=mults,
+                    input_len=input_len,
+                    scope=intervention_scope,
+                    last_k=last_k,
+                    debug_seq_lens=debug_seq_lens,
+                ),
+            )
+            for layer, mults in layer_neuron_multipliers.items()
+        ]
 
         with torch.no_grad():
             for hp, fn in hooks:
@@ -213,6 +224,8 @@ class Mistral7BWrapper:
         positive_token_id: Optional[int] = None,
         negative_token_id: Optional[int] = None,
         language: str = "en",
+        intervention_scope: str = DEFAULT_SCOPE,
+        last_k: int = DEFAULT_LAST_K,
     ) -> Tuple[float, float]:
 
         if positive_token_id is None or negative_token_id is None:
@@ -229,6 +242,7 @@ class Mistral7BWrapper:
             with torch.no_grad():
                 logits = self.model(input_ids)
         else:
+            assert_scope(intervention_scope)
             layer_neuron_multipliers: Dict[int, Dict[int, float]] = {}
             for name, mult in activation_multipliers.items():
                 parts = name.split("-")
@@ -236,17 +250,18 @@ class Mistral7BWrapper:
                 neuron = int(parts[1].split("_")[1])
                 layer_neuron_multipliers.setdefault(layer, {})[neuron] = mult
 
-            def make_hook(neuron_mults):
-                def hook(resid_pre, hook):
-                    modified = resid_pre.clone()
-                    for n, m in neuron_mults.items():
-                        modified[:, :, n] *= m
-                    return modified
-                return hook
-
+            input_len = int(input_ids.shape[1])
             hooks = [
-                (f"blocks.{l}.hook_resid_pre", make_hook(m))
-                for l, m in layer_neuron_multipliers.items()
+                (
+                    f"blocks.{layer}.hook_resid_pre",
+                    make_intervention_hook(
+                        neuron_mults=mults,
+                        input_len=input_len,
+                        scope=intervention_scope,
+                        last_k=last_k,
+                    ),
+                )
+                for layer, mults in layer_neuron_multipliers.items()
             ]
 
             with torch.no_grad():
