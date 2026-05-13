@@ -29,6 +29,7 @@ if str(_SRC_ROOT) not in sys.path:
 from utils.metrics_backfill import (  # noqa: E402
     NULL_METRICS,
     MetricsBackfillError,
+    collect_run_identity,
     collect_run_metrics,
     metrics_are_complete,
 )
@@ -201,24 +202,57 @@ def main(argv: list[str] | None = None) -> int:
             failed += 1
             continue
 
+        # Also recover non-metric identity fields (intervention_scope,
+        # intervention_last_k) from the multipliers artifact metadata. This
+        # patches manifests that pre-date the scope axis without forcing a
+        # rerun.
+        identity_changed: list[str] = []
+        try:
+            identity = collect_run_identity(
+                manifest=manifest,
+                project=args.project,
+                entity=args.entity,
+            )
+        except MetricsBackfillError as exc:
+            print(f"  warn: identity backfill failed ({exc})")
+            identity = {}
+        except Exception as exc:
+            print(f"  warn: identity backfill unexpected error ({exc})")
+            identity = {}
+
+        for key, value in identity.items():
+            if manifest.get(key) != value:
+                identity_changed.append(key)
+
         merged, changed = _merged_metrics(existing_metrics, fetched)
 
         print("  fetched metrics:")
         _print_metrics_table(merged)
+        if identity:
+            print("  fetched identity:")
+            for key, value in identity.items():
+                print(f"    {key}: {value}")
 
-        if not changed:
+        if not changed and not identity_changed:
             print("  skip: no new values to write")
             skipped += 1
             continue
 
         if args.dry_run:
-            print(f"  dry-run: would update {len(changed)} keys: {', '.join(changed)}")
+            all_keys = list(changed) + identity_changed
+            print(
+                f"  dry-run: would update {len(all_keys)} keys: "
+                f"{', '.join(all_keys)}"
+            )
             updated += 1
             continue
 
         manifest["metrics"] = merged
+        for key in identity_changed:
+            manifest[key] = identity[key]
         _write_manifest(manifest_path, manifest)
-        print(f"  wrote: {manifest_path} ({len(changed)} keys updated)")
+        total_updates = len(changed) + len(identity_changed)
+        print(f"  wrote: {manifest_path} ({total_updates} keys updated)")
         updated += 1
 
     print("\n" + "=" * 60)

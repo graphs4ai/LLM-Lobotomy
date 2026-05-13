@@ -21,6 +21,11 @@ from likert_scale_test import (
     create_likert_prompt,
     format_chat_prompt
 )
+from utils.intervention_hooks import (
+    DEFAULT_LAST_K,
+    DEFAULT_SCOPE,
+    assert_scope,
+)
 
 
 def _ranked_feature_to_neuron_name(entry: dict[str, Any]) -> str:
@@ -154,7 +159,9 @@ def soft_objective(
     negative_token_id: int,
     language: str = "pt",
     use_absolute: bool = False,
-    direction: str = "maximize"
+    direction: str = "maximize",
+    intervention_scope: str = DEFAULT_SCOPE,
+    last_k: int = DEFAULT_LAST_K,
 ) -> float:
     """
     Soft objective function using logit differences instead of discrete PI.
@@ -232,7 +239,9 @@ def soft_objective(
                 activation_multipliers=multipliers,
                 positive_token_id=positive_token_id,
                 negative_token_id=negative_token_id,
-                language=language
+                language=language,
+                intervention_scope=intervention_scope,
+                last_k=last_k,
             )
 
             # Store based on question type
@@ -594,6 +603,8 @@ def compute_soft_scores(
     language: str = "pt",
     activation_multipliers: Optional[Dict[str, float]] = None,
     label: str = "score",
+    intervention_scope: str = DEFAULT_SCOPE,
+    last_k: int = DEFAULT_LAST_K,
 ) -> Tuple[float, float]:
     """
     Computes signed and absolute soft score for a questions dataset.
@@ -642,7 +653,9 @@ def compute_soft_scores(
                 activation_multipliers=activation_multipliers,
                 positive_token_id=positive_token_id,
                 negative_token_id=negative_token_id,
-                language=language
+                language=language,
+                intervention_scope=intervention_scope,
+                last_k=last_k,
             )
 
             if tipo == 'P+':
@@ -689,6 +702,8 @@ def main(cfg: DictConfig):
         n_trials = opt_cfg.get('n_trials', 3000)
         direction = opt_cfg.get('direction', 'maximize')
         seed = opt_cfg.get('seed', cfg.get('random_state', 42))
+        intervention_scope = str(opt_cfg.get('intervention_scope', DEFAULT_SCOPE))
+        intervention_last_k = int(opt_cfg.get('intervention_last_k', DEFAULT_LAST_K))
 
         if top_k is None or int(top_k) <= 0:
             raise ValueError(
@@ -701,6 +716,11 @@ def main(cfg: DictConfig):
         if direction not in ('maximize', 'minimize'):
             raise ValueError(
                 f"Invalid optimization.direction={direction!r}. Expected 'maximize' or 'minimize'."
+            )
+        assert_scope(intervention_scope)
+        if intervention_last_k < 0:
+            raise ValueError(
+                f"Invalid optimization.intervention_last_k={intervention_last_k!r}. Expected a non-negative integer."
             )
 
         top_k = int(top_k)
@@ -803,6 +823,7 @@ def main(cfg: DictConfig):
             print(f"  - {n}")
         print(f"\nMultiplier bounds: [{bounds[0]}, {bounds[1]}]")
         print(f"Number of trials: {n_trials}")
+        print(f"Intervention scope: {intervention_scope} (last_k={intervention_last_k})")
         print(f"Fast mode: {fast_mode}" +
               (f" ({fast_n_pairs} pairs)" if fast_mode else ""))
         print(f"Study storage: {storage or 'in-memory'}")
@@ -864,6 +885,8 @@ def main(cfg: DictConfig):
         )
 
         # Compute baseline soft scores on optimization and validation datasets.
+        # `intervention_scope`/`last_k` are still passed for consistency, but
+        # have no effect when `activation_multipliers=None` (no hooks registered).
         baseline_opt_signed_soft, baseline_opt_abs_soft = compute_soft_scores(
             wrapper=wrapper,
             questions_df=optim_questions_df,
@@ -872,6 +895,8 @@ def main(cfg: DictConfig):
             language=language,
             activation_multipliers=None,
             label="Optimization baseline",
+            intervention_scope=intervention_scope,
+            last_k=intervention_last_k,
         )
         baseline_val_signed_soft, baseline_val_abs_soft = compute_soft_scores(
             wrapper=wrapper,
@@ -881,6 +906,8 @@ def main(cfg: DictConfig):
             language=language,
             activation_multipliers=None,
             label="Validation baseline",
+            intervention_scope=intervention_scope,
+            last_k=intervention_last_k,
         )
 
         # Create sampler based on config
@@ -935,6 +962,8 @@ def main(cfg: DictConfig):
                 negative_token_id=negative_token_id,
                 language=language,
                 use_absolute=use_absolute,
+                intervention_scope=intervention_scope,
+                last_k=intervention_last_k,
             ),
             n_trials=n_trials,
             show_progress_bar=True
@@ -954,6 +983,8 @@ def main(cfg: DictConfig):
             language=language,
             activation_multipliers=best_multipliers,
             label="Optimization intervened",
+            intervention_scope=intervention_scope,
+            last_k=intervention_last_k,
         )
         val_intervened_signed, val_intervened_abs = compute_soft_scores(
             wrapper=wrapper,
@@ -963,6 +994,8 @@ def main(cfg: DictConfig):
             language=language,
             activation_multipliers=best_multipliers,
             label="Validation intervened",
+            intervention_scope=intervention_scope,
+            last_k=intervention_last_k,
         )
 
         if use_absolute:
@@ -1026,12 +1059,16 @@ def main(cfg: DictConfig):
         if multiplier_override:
             multipliers_artifact_name = str(multiplier_override)
         else:
-            # Fallback name now includes top_k/n_trials/seed so concurrent
-            # sweep jobs over (k, trials) don't collide on the same artifact.
+            # Fallback name includes scope (when non-default) so concurrent
+            # scope-ablation jobs don't collide on the same artifact.
+            scope_suffix = ""
+            if intervention_scope != DEFAULT_SCOPE:
+                scope_suffix = f"__{intervention_scope}__lk{intervention_last_k}"
             multipliers_artifact_name = (
                 f"{wrapper.model.cfg.model_name}"
                 f"_{objective_mode}_{direction}"
                 f"_k{top_k}_trials{n_trials}_seed{seed}"
+                f"{scope_suffix}"
                 f"_multipliers"
             )
         multipliers_artifact = wandb.Artifact(
@@ -1053,6 +1090,8 @@ def main(cfg: DictConfig):
                 'validation_dataset': validation_dataset_path,
                 'seed': seed,
                 'n_target_neurons': len(target_neurons),
+                'intervention_scope': intervention_scope,
+                'intervention_last_k': intervention_last_k,
                 **soft_metrics,
             }
         )
@@ -1076,6 +1115,8 @@ def main(cfg: DictConfig):
             'validation_dataset': validation_dataset_path,
             'seed': seed,
             'n_target_neurons': len(target_neurons),
+            'intervention_scope': intervention_scope,
+            'intervention_last_k': intervention_last_k,
             **soft_metrics,
         })
 

@@ -16,6 +16,8 @@ SUMMARY_COLUMNS = [
     "top_k",
     "n_trials",
     "seed",
+    "intervention_scope",
+    "intervention_last_k",
     "activation_artifact",
     "feature_ranking_artifact",
     "multiplier_artifact",
@@ -36,6 +38,12 @@ SUMMARY_COLUMNS = [
 ]
 
 
+# Legacy default for manifests that pre-date the scope axis. Kept in sync with
+# `src/utils/intervention_hooks.py`.
+_LEGACY_DEFAULT_SCOPE = "prompt_without_buffer"
+_LEGACY_DEFAULT_LAST_K = 3
+
+
 def _format_cell(value: Any) -> str:
     if value is None:
         return ""
@@ -45,6 +53,12 @@ def _format_cell(value: Any) -> str:
 def _flatten_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     artifacts = manifest.get("artifacts", {}) or {}
     metrics = manifest.get("metrics", {}) or {}
+    # Older manifests (pre-scope-axis) lack these fields; fall back to the
+    # legacy defaults so the summary always has a populated scope/last_k cell.
+    intervention_scope = manifest.get("intervention_scope") or _LEGACY_DEFAULT_SCOPE
+    intervention_last_k = manifest.get("intervention_last_k")
+    if intervention_last_k is None:
+        intervention_last_k = _LEGACY_DEFAULT_LAST_K
     return {
         "run_id": manifest.get("run_id"),
         "model_name": manifest.get("model_name"),
@@ -53,6 +67,8 @@ def _flatten_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         "top_k": manifest.get("top_k"),
         "n_trials": manifest.get("n_trials"),
         "seed": manifest.get("seed"),
+        "intervention_scope": intervention_scope,
+        "intervention_last_k": intervention_last_k,
         "activation_artifact": artifacts.get("activations"),
         "feature_ranking_artifact": artifacts.get("feature_ranking"),
         "multiplier_artifact": artifacts.get("multipliers"),

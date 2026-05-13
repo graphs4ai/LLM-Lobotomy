@@ -36,6 +36,8 @@ import glob
 from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 
+from utils.intervention_hooks import DEFAULT_LAST_K, DEFAULT_SCOPE, assert_scope
+
 if __name__ == "__main__":
     # Add visualizations directory to path for imports
     sys.path.insert(0, os.path.join(
@@ -194,7 +196,9 @@ def run_likert_test(
     max_new_tokens: int = 10,
     temperature: float = 0.0,
     activation_multipliers: Optional[Dict[str, float]] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    intervention_scope: str = DEFAULT_SCOPE,
+    last_k: int = DEFAULT_LAST_K,
 ) -> pd.DataFrame:
     """
     Runs the Likert scale test on all questions.
@@ -253,7 +257,9 @@ def run_likert_test(
                 do_sample=temperature > 0,
                 stop_at_eos=True,
                 eos_token_id=eos_token_id,
-                verbose=False
+                verbose=False,
+                intervention_scope=intervention_scope,
+                last_k=last_k,
             )
 
         # Decode only the new tokens
@@ -285,7 +291,9 @@ def run_likert_test_streaming(
     max_new_tokens: int = 10,
     temperature: float = 0.0,
     activation_multipliers: Optional[Dict[str, float]] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    intervention_scope: str = DEFAULT_SCOPE,
+    last_k: int = DEFAULT_LAST_K,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Streaming version of run_likert_test that yields pair results as they complete.
@@ -359,7 +367,9 @@ def run_likert_test_streaming(
                     do_sample=temperature > 0,
                     stop_at_eos=True,
                     eos_token_id=eos_token_id,
-                    verbose=False
+                    verbose=False,
+                    intervention_scope=intervention_scope,
+                    last_k=last_k,
                 )
 
             # Decode response
@@ -620,10 +630,27 @@ def main(cfg: DictConfig):
     # W&B configuration
     wandb_cfg = cfg.get('wandb', {})
     ipi_eval_cfg = cfg.get("ipi_eval", {})
+    likert_cfg = cfg.get("likert", {}) or {}
 
     # Get multiplier artifact name if provided
     multiplier_artifact_name = ipi_eval_cfg.get(
         'multiplier_artifact_name', None)
+
+    # Intervention scope/last_k defaults come from `cfg.likert`; the artifact
+    # metadata can override them so the optimizer-trained scope is always the
+    # one used during evaluation (single source of truth).
+    intervention_scope = str(
+        likert_cfg.get('intervention_scope', DEFAULT_SCOPE)
+    )
+    intervention_last_k = int(
+        likert_cfg.get('intervention_last_k', DEFAULT_LAST_K)
+    )
+    assert_scope(intervention_scope)
+    if intervention_last_k < 0:
+        raise ValueError(
+            f"Invalid likert.intervention_last_k={intervention_last_k!r}. "
+            f"Expected a non-negative integer."
+        )
 
     # Initialize W&B
     wandb_config = OmegaConf.to_container(cfg, resolve=True)
@@ -705,6 +732,34 @@ def main(cfg: DictConfig):
             f"Loaded {len(activation_multipliers)} multipliers from artifact")
         print(
             f"Artifact best trial value: {best_trial.get('soft_score', 'N/A')}")
+
+        # If the multipliers were optimized under a specific scope, prefer that
+        # scope over the config so the eval distribution matches the
+        # optimization distribution. Warn loudly when they disagree.
+        artifact_metadata = dict(getattr(artifact, 'metadata', {}) or {})
+        artifact_scope = artifact_metadata.get('intervention_scope')
+        artifact_last_k = artifact_metadata.get('intervention_last_k')
+        if artifact_scope is not None:
+            artifact_scope = str(artifact_scope)
+            if artifact_scope != intervention_scope:
+                print(
+                    f"WARNING: multipliers artifact was optimized with "
+                    f"intervention_scope={artifact_scope!r}, but config has "
+                    f"likert.intervention_scope={intervention_scope!r}. "
+                    f"Overriding to {artifact_scope!r} to keep eval consistent."
+                )
+            assert_scope(artifact_scope)
+            intervention_scope = artifact_scope
+        if artifact_last_k is not None:
+            artifact_last_k_int = int(artifact_last_k)
+            if artifact_last_k_int != intervention_last_k:
+                print(
+                    f"WARNING: multipliers artifact was optimized with "
+                    f"intervention_last_k={artifact_last_k_int}, but config "
+                    f"has likert.intervention_last_k={intervention_last_k}. "
+                    f"Overriding to {artifact_last_k_int}."
+                )
+            intervention_last_k = artifact_last_k_int
     else:
         # Parse from config
         activation_multipliers_cfg = ipi_eval_cfg.get(
@@ -717,6 +772,9 @@ def main(cfg: DictConfig):
     if activation_multipliers:
         print(
             f"\nActivation intervention configured: {len(activation_multipliers)} neurons")
+        print(
+            f"Intervention scope: {intervention_scope} (last_k={intervention_last_k})"
+        )
 
     # Get output directory
     hydra_cfg = HydraConfig.get()
@@ -738,7 +796,9 @@ def main(cfg: DictConfig):
             max_new_tokens=cfg.get("ipi_eval", {}).get("max_new_tokens", 10),
             temperature=cfg.get("ipi_eval", {}).get("temperature", 0.0),
             activation_multipliers=None,  # No intervention
-            verbose=True
+            verbose=True,
+            intervention_scope=intervention_scope,
+            last_k=intervention_last_k,
         )
         baseline_pi_data = compute_polarization_index(baseline_results_df)
         baseline_metrics = baseline_pi_data['metrics']
@@ -759,7 +819,9 @@ def main(cfg: DictConfig):
             max_new_tokens=cfg.get("ipi_eval", {}).get("max_new_tokens", 10),
             temperature=cfg.get("ipi_eval", {}).get("temperature", 0.0),
             activation_multipliers=activation_multipliers,
-            verbose=True
+            verbose=True,
+            intervention_scope=intervention_scope,
+            last_k=intervention_last_k,
         )
         intervention_pi_data = compute_polarization_index(
             intervention_results_df)
@@ -840,6 +902,8 @@ def main(cfg: DictConfig):
             'test_type': viz_results.get('question_level_stats', {}).get('test_type'),
             'n_multipliers': len(activation_multipliers),
             'multiplier_artifact_name': multiplier_artifact_name,
+            'intervention_scope': intervention_scope,
+            'intervention_last_k': intervention_last_k,
         })
 
         # Create and log comparison artifact.
@@ -895,7 +959,9 @@ def main(cfg: DictConfig):
             max_new_tokens=cfg.get("ipi_eval", {}).get("max_new_tokens", 10),
             temperature=cfg.get("ipi_eval", {}).get("temperature", 0.0),
             activation_multipliers=None,
-            verbose=True
+            verbose=True,
+            intervention_scope=intervention_scope,
+            last_k=intervention_last_k,
         )
 
         # Compute Polarization Index

@@ -207,6 +207,50 @@ def collect_run_metrics(
     return result
 
 
+def collect_run_identity(
+    manifest: dict[str, Any],
+    project: str,
+    entity: str | None = None,
+) -> dict[str, Any]:
+    """
+    Pull non-metric identity fields (intervention_scope, intervention_last_k)
+    out of the multipliers artifact metadata so old manifests that pre-date the
+    scope field can be patched in-place.
+
+    Returns a dict containing only the keys whose values could be resolved.
+    Missing keys are simply omitted (the caller decides whether to keep the
+    existing manifest value or fall back to a default).
+    """
+    artifacts = manifest.get("artifacts") or {}
+    multipliers_ref = artifacts.get("multipliers")
+    if not multipliers_ref:
+        raise MetricsBackfillError(
+            f"Manifest is missing artifacts.multipliers reference: run_id="
+            f"{manifest.get('run_id')!r}"
+        )
+
+    try:
+        metadata = _fetch_multipliers_metadata(
+            multipliers_ref, project=project, entity=entity
+        )
+    except Exception as exc:
+        raise MetricsBackfillError(
+            f"Failed to fetch multipliers artifact {multipliers_ref!r}: {exc}"
+        ) from exc
+
+    out: dict[str, Any] = {}
+    scope = metadata.get("intervention_scope")
+    if scope is not None:
+        out["intervention_scope"] = str(scope)
+    last_k = metadata.get("intervention_last_k")
+    if last_k is not None:
+        try:
+            out["intervention_last_k"] = int(last_k)
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def metrics_are_complete(metrics: dict[str, Any] | None) -> bool:
     """Return True when every metric key already has a non-None value."""
     if not metrics:

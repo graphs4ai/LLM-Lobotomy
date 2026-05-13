@@ -16,6 +16,7 @@ from utils.experiment_ids import (
     make_multiplier_artifact_name,
     make_run_id,
 )
+from utils.intervention_hooks import DEFAULT_LAST_K, DEFAULT_SCOPE, assert_scope
 from utils.metrics_backfill import (
     NULL_METRICS,
     MetricsBackfillError,
@@ -42,6 +43,8 @@ def _build_commands(
     stages: DictConfig,
     include_baseline_likert: bool,
     artifact_names: dict[str, str],
+    intervention_scope: str,
+    intervention_last_k: int,
 ) -> list[str]:
     """
     Compose stage commands with explicit Hydra overrides for every artifact
@@ -84,16 +87,21 @@ def _build_commands(
             f"optimization.direction={direction} "
             f"optimization.top_k={top_k} "
             f"optimization.n_trials={n_trials} "
+            f"optimization.intervention_scope={intervention_scope} "
+            f"optimization.intervention_last_k={intervention_last_k} "
             f"optimization.feature_artifact_name={feature_ranking_ref} "
             f"artifacts.multiplier_name={multipliers_name}"
         )
     if stages.get("likert_baseline", False) and include_baseline_likert:
         # Baseline must NOT load a multiplier artifact; null wins over any
-        # leftover model-config default.
+        # leftover model-config default. Scope is irrelevant for baseline
+        # generation (no hooks) but we still pass it for log consistency.
         cmds.append(
             "python src/likert_scale_test.py "
             f"model={model_cfg_name} likert.condition=baseline "
             "ipi_eval.multiplier_artifact_name=null "
+            f"likert.intervention_scope={intervention_scope} "
+            f"likert.intervention_last_k={intervention_last_k} "
             f"artifacts.likert_baseline_name={likert_baseline_name}"
         )
     if stages.get("likert_intervened", False):
@@ -102,6 +110,8 @@ def _build_commands(
             f"model={model_cfg_name} likert.condition=intervened "
             f"optimization.direction={direction} optimization.top_k={top_k} "
             f"optimization.n_trials={n_trials} "
+            f"likert.intervention_scope={intervention_scope} "
+            f"likert.intervention_last_k={intervention_last_k} "
             f"ipi_eval.multiplier_artifact_name={multipliers_ref} "
             f"artifacts.likert_intervened_name={likert_intervened_name}"
         )
@@ -231,6 +241,10 @@ def _baseline_reuse_key(
 ) -> tuple[Any, ...]:
     """
     Build the baseline reuse key from settings that define baseline equivalence.
+
+    Intervention scope is intentionally NOT part of this key because the
+    baseline Likert run does not apply any multipliers (no hooks registered);
+    the same baseline output is reusable across all scope variants.
     """
     likert_cfg = cfg.get("likert", {})
     data_cfg = cfg.get("data", {})
@@ -261,6 +275,22 @@ def main(cfg: DictConfig) -> None:
     extraction_cfg = cfg.get("extraction", {})
     layers_cfg = extraction_cfg.get("layers", "all")
     layers = "all" if isinstance(layers_cfg, str) else str(list(layers_cfg))
+
+    # Intervention scope axis. Missing `scopes` field means single-scope sweep
+    # at the legacy default, which keeps existing experiment yamls
+    # (k80_trials, small_k_trials) bit-identical on disk.
+    scopes_cfg = experiment.get("scopes", None)
+    if scopes_cfg is None:
+        scopes = [DEFAULT_SCOPE]
+    else:
+        scopes = [str(s) for s in scopes_cfg]
+    for scope in scopes:
+        assert_scope(scope)
+    intervention_last_k = int(experiment.get("intervention_last_k", DEFAULT_LAST_K))
+    if intervention_last_k < 0:
+        raise ValueError(
+            f"experiment.intervention_last_k must be >= 0, got {intervention_last_k!r}."
+        )
 
     output_root = Path("runs/pipeline")
     output_root.mkdir(parents=True, exist_ok=True)
@@ -294,142 +324,155 @@ def main(cfg: DictConfig) -> None:
             for top_k_value in experiment.feature_counts:
                 top_k = int(top_k_value)
                 for n_trials in _trial_values_for_k(trial_grid, top_k):
-                    run_id = make_run_id(
-                        model_name=model_cfg_name,
-                        split_id=split_id,
-                        direction=direction,
-                        top_k=top_k,
-                        n_trials=n_trials,
-                        seed=seed,
-                    )
-                    manifest_path = output_root / run_id / "manifest.json"
-                    previous_manifest = _read_manifest(manifest_path)
-                    previous_status = (
-                        previous_manifest.get("status")
-                        if previous_manifest is not None
-                        else None
-                    )
-                    baseline_key = _baseline_reuse_key(
-                        model_cfg_name=model_cfg_name,
-                        split_id=split_id,
-                        seed=seed,
-                        cfg=cfg,
-                    )
-                    include_baseline_likert = baseline_key not in scheduled_baseline_keys
-
-                    if _should_skip_existing(previous_status, resume, force, skip_existing):
-                        skipped_count += 1
-                        print(f"\n[skip] {run_id} (already completed; resume/skip_existing active)")
-                        continue
-
-                    try:
-                        # Bare artifact names (no `:alias` suffix). Used both
-                        # as outputs (passed to scripts via artifacts.*) and,
-                        # with `:latest` appended, as inputs to downstream
-                        # stages.
-                        artifact_names = {
-                            "activations": make_activation_artifact_name(
-                                model_name=model_cfg_name,
-                                split_id=split_id,
-                                layers=layers,
-                            ),
-                            "feature_ranking": make_feature_ranking_artifact_name(
-                                model_name=model_cfg_name,
-                                split_id=split_id,
-                                ranking_top_n=ranking_top_n,
-                            ),
-                            "multipliers": make_multiplier_artifact_name(
-                                model_name=model_cfg_name,
-                                split_id=split_id,
-                                direction=direction,
-                                top_k=top_k,
-                                n_trials=n_trials,
-                                seed=seed,
-                            ),
-                            "likert_baseline": make_likert_artifact_name(
-                                model_name=model_cfg_name,
-                                split_id=split_id,
-                                condition="baseline",
-                                seed=seed,
-                            ),
-                            "likert_intervened": make_likert_artifact_name(
-                                model_name=model_cfg_name,
-                                split_id=split_id,
-                                condition="intervened",
-                                seed=seed,
-                                direction=direction,
-                                top_k=top_k,
-                                n_trials=n_trials,
-                            ),
-                        }
-                        artifacts = {k: f"{v}:latest" for k, v in artifact_names.items()}
-                        commands = _build_commands(
-                            model_cfg_name=model_cfg_name,
+                    for scope in scopes:
+                        run_id = make_run_id(
+                            model_name=model_cfg_name,
+                            split_id=split_id,
                             direction=direction,
                             top_k=top_k,
                             n_trials=n_trials,
-                            stages=experiment.stages,
-                            include_baseline_likert=include_baseline_likert,
-                            artifact_names=artifact_names,
+                            seed=seed,
+                            scope=scope,
+                            last_k=intervention_last_k,
                         )
-                        manifest = {
-                            "run_id": run_id,
-                            "status": "planned",
-                            "model_name": model_cfg_name,
-                            "split_id": split_id,
-                            "direction": direction,
-                            "top_k": top_k,
-                            "n_trials": int(n_trials),
-                            "seed": seed,
-                            "commands": commands,
-                            "artifacts": artifacts,
-                            "metrics": _null_metrics(),
-                            "error": None,
-                        }
-                        _write_manifest(manifest_path, manifest)
+                        manifest_path = output_root / run_id / "manifest.json"
+                        previous_manifest = _read_manifest(manifest_path)
+                        previous_status = (
+                            previous_manifest.get("status")
+                            if previous_manifest is not None
+                            else None
+                        )
+                        baseline_key = _baseline_reuse_key(
+                            model_cfg_name=model_cfg_name,
+                            split_id=split_id,
+                            seed=seed,
+                            cfg=cfg,
+                        )
+                        include_baseline_likert = baseline_key not in scheduled_baseline_keys
 
-                        job_count += 1
-                        print(f"\n[{job_count}] {run_id}")
-                        if previous_status and force:
-                            print(f"  forced replan over previous status={previous_status}")
-                        for cmd in commands:
-                            print(f"  - {cmd}")
-                        print(f"  manifest: {manifest_path}")
-                        if include_baseline_likert and experiment.stages.get("likert_baseline", False):
-                            scheduled_baseline_keys.add(baseline_key)
-                        else:
-                            print("  baseline likert: reused (not rescheduled)")
+                        if _should_skip_existing(previous_status, resume, force, skip_existing):
+                            skipped_count += 1
+                            print(f"\n[skip] {run_id} (already completed; resume/skip_existing active)")
+                            continue
 
-                        if not dry_run:
-                            _execute_job_commands(
-                                commands=commands,
-                                working_directory=project_root,
-                                manifest_path=manifest_path,
-                                manifest=manifest,
-                                wandb_project=wandb_project,
-                                wandb_entity=wandb_entity,
+                        try:
+                            # Bare artifact names (no `:alias` suffix). Used both
+                            # as outputs (passed to scripts via artifacts.*) and,
+                            # with `:latest` appended, as inputs to downstream
+                            # stages.
+                            artifact_names = {
+                                "activations": make_activation_artifact_name(
+                                    model_name=model_cfg_name,
+                                    split_id=split_id,
+                                    layers=layers,
+                                ),
+                                "feature_ranking": make_feature_ranking_artifact_name(
+                                    model_name=model_cfg_name,
+                                    split_id=split_id,
+                                    ranking_top_n=ranking_top_n,
+                                ),
+                                "multipliers": make_multiplier_artifact_name(
+                                    model_name=model_cfg_name,
+                                    split_id=split_id,
+                                    direction=direction,
+                                    top_k=top_k,
+                                    n_trials=n_trials,
+                                    seed=seed,
+                                    scope=scope,
+                                    last_k=intervention_last_k,
+                                ),
+                                "likert_baseline": make_likert_artifact_name(
+                                    model_name=model_cfg_name,
+                                    split_id=split_id,
+                                    condition="baseline",
+                                    seed=seed,
+                                ),
+                                "likert_intervened": make_likert_artifact_name(
+                                    model_name=model_cfg_name,
+                                    split_id=split_id,
+                                    condition="intervened",
+                                    seed=seed,
+                                    direction=direction,
+                                    top_k=top_k,
+                                    n_trials=n_trials,
+                                    scope=scope,
+                                    last_k=intervention_last_k,
+                                ),
+                            }
+                            artifacts = {k: f"{v}:latest" for k, v in artifact_names.items()}
+                            commands = _build_commands(
+                                model_cfg_name=model_cfg_name,
+                                direction=direction,
+                                top_k=top_k,
+                                n_trials=n_trials,
+                                stages=experiment.stages,
+                                include_baseline_likert=include_baseline_likert,
+                                artifact_names=artifact_names,
+                                intervention_scope=scope,
+                                intervention_last_k=intervention_last_k,
                             )
-                            print("  execution: completed")
-                    except Exception as exc:
-                        failed_count += 1
-                        failed_manifest = {
-                            "run_id": run_id,
-                            "status": "failed",
-                            "model_name": model_cfg_name,
-                            "split_id": split_id,
-                            "direction": direction,
-                            "top_k": top_k,
-                            "n_trials": int(n_trials),
-                            "seed": seed,
-                            "commands": [],
-                            "artifacts": {},
-                            "metrics": _null_metrics(),
-                            "error": str(exc),
-                        }
-                        _write_manifest(manifest_path, failed_manifest)
-                        print(f"\n[failed] {run_id}")
-                        print(f"  error: {exc}")
-                        print(f"  manifest: {manifest_path}")
+                            manifest = {
+                                "run_id": run_id,
+                                "status": "planned",
+                                "model_name": model_cfg_name,
+                                "split_id": split_id,
+                                "direction": direction,
+                                "top_k": top_k,
+                                "n_trials": int(n_trials),
+                                "seed": seed,
+                                "intervention_scope": scope,
+                                "intervention_last_k": intervention_last_k,
+                                "commands": commands,
+                                "artifacts": artifacts,
+                                "metrics": _null_metrics(),
+                                "error": None,
+                            }
+                            _write_manifest(manifest_path, manifest)
+
+                            job_count += 1
+                            print(f"\n[{job_count}] {run_id}")
+                            if previous_status and force:
+                                print(f"  forced replan over previous status={previous_status}")
+                            for cmd in commands:
+                                print(f"  - {cmd}")
+                            print(f"  manifest: {manifest_path}")
+                            if include_baseline_likert and experiment.stages.get("likert_baseline", False):
+                                scheduled_baseline_keys.add(baseline_key)
+                            else:
+                                print("  baseline likert: reused (not rescheduled)")
+
+                            if not dry_run:
+                                _execute_job_commands(
+                                    commands=commands,
+                                    working_directory=project_root,
+                                    manifest_path=manifest_path,
+                                    manifest=manifest,
+                                    wandb_project=wandb_project,
+                                    wandb_entity=wandb_entity,
+                                )
+                                print("  execution: completed")
+                        except Exception as exc:
+                            failed_count += 1
+                            failed_manifest = {
+                                "run_id": run_id,
+                                "status": "failed",
+                                "model_name": model_cfg_name,
+                                "split_id": split_id,
+                                "direction": direction,
+                                "top_k": top_k,
+                                "n_trials": int(n_trials),
+                                "seed": seed,
+                                "intervention_scope": scope,
+                                "intervention_last_k": intervention_last_k,
+                                "commands": [],
+                                "artifacts": {},
+                                "metrics": _null_metrics(),
+                                "error": str(exc),
+                            }
+                            _write_manifest(manifest_path, failed_manifest)
+                            print(f"\n[failed] {run_id}")
+                            print(f"  error: {exc}")
+                            print(f"  manifest: {manifest_path}")
 
     print("\n" + "=" * 70)
     print(f"Planned jobs: {job_count}")
