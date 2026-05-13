@@ -40,6 +40,13 @@ likert:
   parser_version: default
   temperature: 0
   decoding_strategy: greedy
+  # Intervention scope used during Likert generation. See
+  # `src/utils/intervention_hooks.py` for supported values. The legacy default
+  # is `prompt_without_buffer` with `intervention_last_k=3`, which reproduces
+  # the historical `buffer_size = 3` behavior. When a multipliers artifact is
+  # loaded, its metadata overrides these values.
+  intervention_scope: prompt_without_buffer
+  intervention_last_k: 3
 
 # IPI evaluation settings
 ipi_eval:
@@ -66,6 +73,12 @@ optimization:
   # orchestrator; standalone runs of optimize_intervention.py must override
   # this explicitly).
   feature_artifact_name: null
+  # Intervention scope used while optimizing multipliers. See
+  # `src/utils/intervention_hooks.py` for supported values. The legacy default
+  # is `prompt_without_buffer` with `intervention_last_k=3`, which reproduces
+  # the historical `buffer_size = 3` behavior.
+  intervention_scope: prompt_without_buffer
+  intervention_last_k: 3
 
 artifacts:
   activations_name: null

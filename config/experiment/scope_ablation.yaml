@@ -1,0 +1,38 @@
+name: scope_ablation
+split_id: three_way_plus_holdout_v1
+seed: 42
+
+models:
+  - gemma-3-4b
+
+directions:
+  - minimize
+  - maximize
+
+feature_counts:
+  # - 16
+  - 32
+
+trial_grid:
+  # "16": [2000]
+  "32": [2000]
+
+# Intervention scope axis. Each scope is re-optimized independently because
+# multipliers trained under one scope are not directly transferable to another.
+scopes:
+  # - prompt_without_buffer
+  # - prompt_all
+  # - prompt_last_token
+  - prompt_last_k
+  # - all_tokens
+  - generated_only
+
+intervention_last_k: 3
+
+stages:
+  extract_activations: false
+  feature_selection: false
+  optimization: true
+  likert_baseline: false
+  likert_intervened: true
+  poeta: false
