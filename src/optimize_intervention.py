@@ -738,11 +738,17 @@ def main(cfg: DictConfig):
         )
 
         split_id = cfg.data.get('split_id', None)
+        optimization_dataset = cfg.data.get('optimization_dataset')
+        validation_dataset = cfg.data.get('validation_dataset')
+        if not optimization_dataset:
+            raise ValueError("data.optimization_dataset must be set for optimization.")
+        if not validation_dataset:
+            raise ValueError("data.validation_dataset must be set for optimization.")
         optimization_dataset_path = hydra.utils.to_absolute_path(
-            cfg.data.get('optimization_dataset')
+            str(optimization_dataset)
         )
         validation_dataset_path = hydra.utils.to_absolute_path(
-            cfg.data.get('validation_dataset', ipi_eval_cfg.questions_csv)
+            str(validation_dataset)
         )
 
         # Determine target neurons: from artifact or config

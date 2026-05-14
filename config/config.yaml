@@ -35,6 +35,7 @@ feature_selection:
 
 likert:
   condition: baseline
+  eval_split: validation
   multiplier_artifact_name: null
   prompt_template_version: default
   parser_version: default
@@ -50,7 +51,6 @@ likert:
 
 # IPI evaluation settings
 ipi_eval:
-  questions_csv: "resources/ipi_questions.csv"
   language: "pt"
   use_chat_format: true
   max_new_tokens: 10

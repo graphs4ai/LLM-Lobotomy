@@ -38,6 +38,31 @@ from pathlib import Path
 
 from utils.intervention_hooks import DEFAULT_LAST_K, DEFAULT_SCOPE, assert_scope
 
+_LIKERT_EVAL_SPLITS = {
+    "validation": "validation_dataset",
+    "holdout_test": "ipi_test_dataset",
+}
+
+
+def _resolve_likert_questions_dataset(cfg: DictConfig) -> tuple[str, str]:
+    data_cfg = cfg.get("data", {}) or {}
+    likert_cfg = cfg.get("likert", {}) or {}
+    eval_split = str(likert_cfg.get("eval_split", "validation"))
+    dataset_key = _LIKERT_EVAL_SPLITS.get(eval_split)
+    if dataset_key is None:
+        raise ValueError(
+            "Invalid likert.eval_split="
+            f"{eval_split!r}. Expected one of {sorted(_LIKERT_EVAL_SPLITS)}."
+        )
+
+    rel_path = data_cfg.get(dataset_key)
+    if rel_path is None or str(rel_path).strip() == "":
+        raise ValueError(
+            f"Missing data.{dataset_key} for likert.eval_split={eval_split!r}."
+        )
+
+    return hydra.utils.to_absolute_path(str(rel_path)), eval_split
+
 if __name__ == "__main__":
     # Add visualizations directory to path for imports
     sys.path.insert(0, os.path.join(
@@ -654,9 +679,11 @@ def main(cfg: DictConfig):
 
     # Initialize W&B
     wandb_config = OmegaConf.to_container(cfg, resolve=True)
+    questions_path, likert_eval_split = _resolve_likert_questions_dataset(cfg)
     wandb_config.update(
         {
-            'questions_csv': ipi_eval_cfg.get('questions_csv'),
+            'likert_eval_split': likert_eval_split,
+            'likert_eval_dataset': questions_path,
             'language': ipi_eval_cfg.get('language', 'pt'),
             'temperature': ipi_eval_cfg.get('temperature', 0.0),
             'multiplier_artifact_name': multiplier_artifact_name,
@@ -670,12 +697,8 @@ def main(cfg: DictConfig):
         config=wandb_config,
     )
 
-    # Load questions
-    questions_path = hydra.utils.to_absolute_path(
-        ipi_eval_cfg.get("questions_csv", "ipi_questions.csv")
-    )
-
-    print(f"Loading questions from {questions_path}...")
+    # Load questions from the configured IPI split.
+    print(f"Loading questions from {questions_path} (likert.eval_split={likert_eval_split})...")
 
     if not os.path.exists(questions_path):
         raise FileNotFoundError(f"Questions file not found: {questions_path}")
@@ -900,6 +923,8 @@ def main(cfg: DictConfig):
             'test_pvalue': viz_results.get('question_level_stats', {}).get('test_pvalue'),
             'test_statistic': viz_results.get('question_level_stats', {}).get('test_statistic'),
             'test_type': viz_results.get('question_level_stats', {}).get('test_type'),
+            'likert_eval_split': likert_eval_split,
+            'likert_eval_dataset': questions_path,
             'n_multipliers': len(activation_multipliers),
             'multiplier_artifact_name': multiplier_artifact_name,
             'intervention_scope': intervention_scope,
@@ -1059,6 +1084,8 @@ def main(cfg: DictConfig):
             'valid_pairs': metrics.get('valid_pairs'),
             'total_pairs': metrics.get('total_pairs'),
             'has_intervention': False,
+            'likert_eval_split': likert_eval_split,
+            'likert_eval_dataset': questions_path,
         })
 
     # Finish W&B run

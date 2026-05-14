@@ -10,29 +10,29 @@ directions:
   - maximize
 
 feature_counts:
-  # - 16
   - 32
+  - 96
 
 trial_grid:
-  # "16": [2000]
   "32": [2000]
+  "96": [2000]
 
 # Intervention scope axis. Each scope is re-optimized independently because
 # multipliers trained under one scope are not directly transferable to another.
 scopes:
-  # - prompt_without_buffer
-  # - prompt_all
-  # - prompt_last_token
+  - prompt_without_buffer
+  - prompt_all
+  - prompt_last_token
   - prompt_last_k
-  # - all_tokens
+  - all_tokens
   - generated_only
 
 intervention_last_k: 3
 
 stages:
-  extract_activations: false
-  feature_selection: false
+  extract_activations: true
+  feature_selection: true
   optimization: true
-  likert_baseline: false
+  likert_baseline: true
   likert_intervened: true
   poeta: false

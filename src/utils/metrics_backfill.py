@@ -14,10 +14,10 @@ Mapping (W&B -> manifest.metrics):
       soft_ipi_validation_intervened    -> soft_ipi_validation_intervened
       delta_soft_ipi_validation         -> delta_soft_ipi_validation
   intervened likert run summary
-      baseline_pi                       -> discrete_ipi_test_baseline
-      intervention_pi                   -> discrete_ipi_test_intervened
-      pi_shift                          -> delta_discrete_ipi_test
-      test_pvalue (when Wilcoxon)       -> wilcoxon_p_value
+      baseline_pi                       -> discrete_ipi_validation_* or discrete_ipi_test_*
+      intervention_pi                   -> (same split bucket)
+      pi_shift                          -> (same split bucket)
+      test_pvalue (when Wilcoxon)       -> wilcoxon_validation_p_value or wilcoxon_p_value
 """
 
 from __future__ import annotations
@@ -35,6 +35,10 @@ NULL_METRICS: dict[str, Any] = {
     "soft_ipi_validation_baseline": None,
     "soft_ipi_validation_intervened": None,
     "delta_soft_ipi_validation": None,
+    "discrete_ipi_validation_baseline": None,
+    "discrete_ipi_validation_intervened": None,
+    "delta_discrete_ipi_validation": None,
+    "wilcoxon_validation_p_value": None,
     "discrete_ipi_test_baseline": None,
     "discrete_ipi_test_intervened": None,
     "delta_discrete_ipi_test": None,
@@ -113,6 +117,107 @@ def _select_latest_run(runs: list[Any]) -> Any | None:
     return sorted(runs, key=_sort_key, reverse=True)[0]
 
 
+def _likert_eval_split(run: Any) -> str:
+    """Classify which IPI split a Likert run evaluated."""
+    summary = dict(getattr(run, "summary", {}) or {})
+    summary_split = summary.get("likert_eval_split")
+    if summary_split in {"validation", "holdout_test"}:
+        return str(summary_split)
+
+    config = dict(getattr(run, "config", {}) or {})
+    likert_cfg = config.get("likert") or {}
+    if isinstance(likert_cfg, dict):
+        cfg_split = likert_cfg.get("eval_split")
+        if cfg_split in {"validation", "holdout_test"}:
+            return str(cfg_split)
+
+    data_cfg = config.get("data") or {}
+    if not isinstance(data_cfg, dict):
+        data_cfg = {}
+
+    eval_dataset = summary.get("likert_eval_dataset")
+    if eval_dataset is None:
+        return "unknown"
+
+    eval_path = str(eval_dataset)
+    validation_path = data_cfg.get("validation_dataset")
+    if validation_path is not None and eval_path.endswith(str(validation_path)):
+        return "validation"
+    test_path = data_cfg.get("ipi_test_dataset")
+    if test_path is not None and eval_path.endswith(str(test_path)):
+        return "holdout_test"
+    if "ipi_questions_val" in eval_path:
+        return "validation"
+    if "ipi_questions_test" in eval_path:
+        return "holdout_test"
+    return "unknown"
+
+
+def _empty_likert_metrics() -> dict[str, float | None]:
+    return {
+        "discrete_ipi_validation_baseline": None,
+        "discrete_ipi_validation_intervened": None,
+        "delta_discrete_ipi_validation": None,
+        "wilcoxon_validation_p_value": None,
+        "discrete_ipi_test_baseline": None,
+        "discrete_ipi_test_intervened": None,
+        "delta_discrete_ipi_test": None,
+        "wilcoxon_p_value": None,
+    }
+
+
+def _map_likert_summary_to_metrics(
+    summary: dict[str, Any],
+    eval_split: str,
+) -> dict[str, float | None]:
+    baseline_pi = _coerce_float(summary.get("baseline_pi"))
+    intervention_pi = _coerce_float(summary.get("intervention_pi"))
+    pi_shift = _coerce_float(summary.get("pi_shift"))
+    test_type = summary.get("test_type")
+    test_pvalue = _coerce_float(summary.get("test_pvalue"))
+    wilcoxon = None
+    if test_pvalue is not None and isinstance(test_type, str) and "wilcoxon" in test_type.lower():
+        wilcoxon = test_pvalue
+
+    metrics = _empty_likert_metrics()
+    if eval_split == "holdout_test":
+        metrics.update(
+            {
+                "discrete_ipi_test_baseline": baseline_pi,
+                "discrete_ipi_test_intervened": intervention_pi,
+                "delta_discrete_ipi_test": pi_shift,
+                "wilcoxon_p_value": wilcoxon,
+            }
+        )
+        return metrics
+
+    # Pipeline sweeps default to validation; unknown legacy runs stay on test keys.
+    if eval_split == "validation":
+        target_prefix = "validation"
+    else:
+        target_prefix = "test"
+
+    if target_prefix == "validation":
+        metrics.update(
+            {
+                "discrete_ipi_validation_baseline": baseline_pi,
+                "discrete_ipi_validation_intervened": intervention_pi,
+                "delta_discrete_ipi_validation": pi_shift,
+                "wilcoxon_validation_p_value": wilcoxon,
+            }
+        )
+    else:
+        metrics.update(
+            {
+                "discrete_ipi_test_baseline": baseline_pi,
+                "discrete_ipi_test_intervened": intervention_pi,
+                "delta_discrete_ipi_test": pi_shift,
+                "wilcoxon_p_value": wilcoxon,
+            }
+        )
+    return metrics
+
+
 def _fetch_likert_metrics(
     multipliers_ref: str,
     project: str,
@@ -142,26 +247,11 @@ def _fetch_likert_metrics(
 
     run = _select_latest_run(runs)
     if run is None:
-        return {
-            "discrete_ipi_test_baseline": None,
-            "discrete_ipi_test_intervened": None,
-            "delta_discrete_ipi_test": None,
-            "wilcoxon_p_value": None,
-        }
+        return _empty_likert_metrics()
 
     summary = dict(getattr(run, "summary", {}) or {})
-    test_type = summary.get("test_type")
-    test_pvalue = _coerce_float(summary.get("test_pvalue"))
-    wilcoxon = None
-    if test_pvalue is not None and isinstance(test_type, str) and "wilcoxon" in test_type.lower():
-        wilcoxon = test_pvalue
-
-    return {
-        "discrete_ipi_test_baseline": _coerce_float(summary.get("baseline_pi")),
-        "discrete_ipi_test_intervened": _coerce_float(summary.get("intervention_pi")),
-        "delta_discrete_ipi_test": _coerce_float(summary.get("pi_shift")),
-        "wilcoxon_p_value": wilcoxon,
-    }
+    eval_split = _likert_eval_split(run)
+    return _map_likert_summary_to_metrics(summary, eval_split=eval_split)
 
 
 def collect_run_metrics(
@@ -251,8 +341,22 @@ def collect_run_identity(
     return out
 
 
+_REQUIRED_METRIC_KEYS = (
+    "soft_ipi_optimization_baseline",
+    "soft_ipi_optimization_intervened",
+    "delta_soft_ipi_optimization",
+    "soft_ipi_validation_baseline",
+    "soft_ipi_validation_intervened",
+    "delta_soft_ipi_validation",
+    "discrete_ipi_validation_baseline",
+    "discrete_ipi_validation_intervened",
+    "delta_discrete_ipi_validation",
+    "wilcoxon_validation_p_value",
+)
+
+
 def metrics_are_complete(metrics: dict[str, Any] | None) -> bool:
-    """Return True when every metric key already has a non-None value."""
+    """Return True when sweep-relevant metric keys are populated."""
     if not metrics:
         return False
-    return all(metrics.get(key) is not None for key in NULL_METRICS)
+    return all(metrics.get(key) is not None for key in _REQUIRED_METRIC_KEYS)

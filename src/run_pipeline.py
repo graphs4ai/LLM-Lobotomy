@@ -248,11 +248,13 @@ def _baseline_reuse_key(
     """
     likert_cfg = cfg.get("likert", {})
     data_cfg = cfg.get("data", {})
-    ipi_test_dataset = data_cfg.get("ipi_test_dataset", cfg.ipi_eval.questions_csv)
+    validation_dataset = data_cfg.get("validation_dataset")
+    if not validation_dataset:
+        raise ValueError("data.validation_dataset must be set for pipeline Likert planning.")
     return (
         model_cfg_name,
         split_id,
-        str(ipi_test_dataset),
+        str(validation_dataset),
         str(likert_cfg.get("prompt_template_version", "default")),
         str(likert_cfg.get("parser_version", "default")),
         float(likert_cfg.get("temperature", 0)),
@@ -271,6 +273,9 @@ def main(cfg: DictConfig) -> None:
     experiment = cfg.experiment
     split_id = str(experiment.split_id)
     seed = int(experiment.seed)
+    data_cfg = cfg.get("data", {}) or {}
+    if not data_cfg.get("validation_dataset"):
+        raise ValueError("data.validation_dataset must be set for pipeline planning.")
     ranking_top_n = int(cfg.feature_selection.get("ranking_top_n", 256))
     extraction_cfg = cfg.get("extraction", {})
     layers_cfg = extraction_cfg.get("layers", "all")
