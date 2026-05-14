@@ -21,6 +21,7 @@ from likert_scale_test import (
     create_likert_prompt,
     format_chat_prompt
 )
+from utils.experiment_ids import make_multiplier_artifact_name, scope_identity_suffix
 from utils.intervention_hooks import (
     DEFAULT_LAST_K,
     DEFAULT_SCOPE,
@@ -1059,18 +1060,30 @@ def main(cfg: DictConfig):
         if multiplier_override:
             multipliers_artifact_name = str(multiplier_override)
         else:
-            # Fallback name includes scope (when non-default) so concurrent
-            # scope-ablation jobs don't collide on the same artifact.
-            scope_suffix = ""
-            if intervention_scope != DEFAULT_SCOPE:
-                scope_suffix = f"__{intervention_scope}__lk{intervention_last_k}"
-            multipliers_artifact_name = (
-                f"{wrapper.model.cfg.model_name}"
-                f"_{objective_mode}_{direction}"
-                f"_k{top_k}_trials{n_trials}_seed{seed}"
-                f"{scope_suffix}"
-                f"_multipliers"
-            )
+            model_name_for_artifact = hydra_cfg.runtime.choices.get("model")
+            if split_id and model_name_for_artifact:
+                multipliers_artifact_name = make_multiplier_artifact_name(
+                    model_name=str(model_name_for_artifact),
+                    split_id=str(split_id),
+                    direction=direction,
+                    top_k=top_k,
+                    n_trials=n_trials,
+                    seed=seed,
+                    scope=intervention_scope,
+                    last_k=intervention_last_k,
+                )
+            else:
+                # Legacy ad-hoc fallback when split/model slugs are unavailable.
+                scope_suffix = scope_identity_suffix(
+                    intervention_scope, intervention_last_k
+                )
+                multipliers_artifact_name = (
+                    f"{wrapper.model.cfg.model_name}"
+                    f"_{objective_mode}_{direction}"
+                    f"_k{top_k}_trials{n_trials}_seed{seed}"
+                    f"{scope_suffix}"
+                    f"_multipliers"
+                )
         multipliers_artifact = wandb.Artifact(
             name=multipliers_artifact_name,
             type="model-weights",

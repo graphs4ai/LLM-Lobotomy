@@ -13,11 +13,12 @@ def _normalize(value: str) -> str:
     return value.strip().replace("/", "-").replace(" ", "-")
 
 
-def _scope_suffix(scope: str | None, last_k: int | None) -> str:
+def scope_identity_suffix(scope: str | None, last_k: int | None) -> str:
     """Return the optional `__{scope}__lastk{last_k}` fragment.
 
-    Returns an empty string when scope is None or equals the legacy default,
-    so existing run_ids and artifact names stay byte-identical on disk.
+    Returns an empty string only when scope is None so every concrete scope
+    (including the legacy default `prompt_without_buffer`) is encoded in
+    run IDs and artifact names.
     """
     if scope is None:
         return ""
@@ -49,7 +50,7 @@ def make_run_id(
         parts.append(f"trials{int(n_trials)}")
     parts.append(f"seed{int(seed)}")
     base = "__".join(parts)
-    return f"{base}{_scope_suffix(scope, last_k)}"
+    return f"{base}{scope_identity_suffix(scope, last_k)}"
 
 
 def make_activation_artifact_name(model_name: str, split_id: str, layers: str) -> str:
@@ -73,7 +74,7 @@ def make_multiplier_artifact_name(
     return (
         f"multipliers-{_normalize(model_name)}-{_normalize(split_id)}-"
         f"{_normalize(direction)}-k{int(top_k)}-trials{int(n_trials)}-seed{int(seed)}"
-        f"{_scope_suffix(scope, last_k)}"
+        f"{scope_identity_suffix(scope, last_k)}"
     )
 
 
@@ -102,7 +103,7 @@ def make_likert_artifact_name(
         return (
             f"likert-intervened-{_normalize(model_name)}-{_normalize(split_id)}-"
             f"{_normalize(direction)}-k{int(top_k)}-trials{int(n_trials)}-seed{int(seed)}"
-            f"{_scope_suffix(scope, last_k)}"
+            f"{scope_identity_suffix(scope, last_k)}"
         )
     raise ValueError(
         f"Unsupported condition={condition!r}. Expected 'baseline' or 'intervened'."
@@ -118,6 +119,16 @@ if __name__ == "__main__":
             top_k=80,
             n_trials=3000,
             seed=42,
+        ),
+        "run_id_default_scope": make_run_id(
+            model_name="gemma-3-4b",
+            split_id="three_way_split_v1",
+            direction="minimize",
+            top_k=16,
+            n_trials=1000,
+            seed=42,
+            scope="prompt_without_buffer",
+            last_k=3,
         ),
         "run_id_with_scope": make_run_id(
             model_name="gemma-3-4b",
