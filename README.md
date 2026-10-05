@@ -1,6 +1,6 @@
 # LLM-Lobotomy
 
-A research framework for **analyzing and steering political stance** in Large Language Model (LLM) activations without fine-tuning. This project implements an end-to-end pipeline from activation extraction to bias intervention and evaluation.
+A research framework for **analyzing and steering political stance** in Large Language Model (LLM) activations without fine-tuning. This project implements an end-to-end pipeline from activation extraction to bias intervention and evaluation. Check out our [BRACIS'26 paper](https://link.springer.com/chapter/10.1007/978-3-032-39882-6_39)!
 
 ## Research Overview
 
